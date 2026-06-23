@@ -1,0 +1,1 @@
+"""VOICEVOX generation layer."""

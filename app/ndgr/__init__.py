@@ -1,0 +1,1 @@
+"""NDGR acquisition layer."""

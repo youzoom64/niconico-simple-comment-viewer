@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NDGRイベント監視 方針チェックシート</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #17191d;
+      --panel: #22252b;
+      --panel2: #2b2f37;
+      --line: #454b56;
+      --text: #eef3ff;
+      --muted: #aeb8c9;
+      --accent: #38bdf8;
+      --yes: #22c55e;
+      --no: #ef4444;
+      --other: #f59e0b;
+      --shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 18% 0%, rgba(56, 189, 248, 0.12), transparent 32rem),
+        radial-gradient(circle at 92% 18%, rgba(245, 158, 11, 0.10), transparent 28rem),
+        var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
+      line-height: 1.6;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid var(--line);
+      background: rgba(23, 25, 29, 0.92);
+      backdrop-filter: blur(12px);
+    }
+
+    .header-inner {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 14px 22px;
+      display: grid;
+      grid-template-columns: minmax(280px, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #303540;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button:hover {
+      border-color: var(--accent);
+      background: #374151;
+    }
+
+    button.primary {
+      background: #0ea5e9;
+      border-color: #38bdf8;
+      color: #07111d;
+    }
+
+    button.danger {
+      background: #3a2528;
+      border-color: #85424a;
+    }
+
+    main {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 22px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 420px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    section {
+      background: rgba(34, 37, 43, 0.94);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      margin-bottom: 18px;
+      overflow: hidden;
+    }
+
+    section h2 {
+      margin: 0;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--line);
+      font-size: 17px;
+      background: rgba(43, 47, 55, 0.88);
+    }
+
+    .section-body {
+      padding: 14px 16px 16px;
+    }
+
+    .hint {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .question {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) auto minmax(220px, 0.8fr);
+      gap: 12px;
+      align-items: start;
+      padding: 10px 0;
+      border-top: 1px solid rgba(69, 75, 86, 0.56);
+    }
+
+    .question:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .q-title {
+      font-weight: 700;
+    }
+
+    .q-desc {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .choice-group {
+      display: inline-grid;
+      grid-template-columns: repeat(3, auto);
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .choice {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 66px;
+      border: 1px solid var(--line);
+      background: #252a33;
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .choice input {
+      appearance: none;
+      width: 0;
+      height: 0;
+      margin: 0;
+    }
+
+    .choice:has(input:checked) {
+      color: #07111d;
+      font-weight: 800;
+    }
+
+    .choice.yes:has(input:checked) {
+      background: var(--yes);
+      border-color: var(--yes);
+    }
+
+    .choice.no:has(input:checked) {
+      background: var(--no);
+      border-color: var(--no);
+      color: #fff;
+    }
+
+    .choice.other:has(input:checked) {
+      background: var(--other);
+      border-color: var(--other);
+    }
+
+    input[type="text"], textarea, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #181b20;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px;
+      font-family: inherit;
+    }
+
+    textarea {
+      min-height: 58px;
+      resize: vertical;
+    }
+
+    .matrix-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1040px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid rgba(69, 75, 86, 0.55);
+      padding: 8px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: #303540;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      font-size: 13px;
+    }
+
+    td {
+      background: #242831;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .event-name {
+      font-weight: 800;
+      min-width: 150px;
+    }
+
+    .event-sub {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    .mini-choice {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      min-width: 170px;
+    }
+
+    .mini-choice .choice {
+      min-width: 0;
+      padding: 4px 6px;
+      font-size: 12px;
+    }
+
+    .event-card-list {
+      display: grid;
+      gap: 14px;
+    }
+
+    .event-card {
+      border: 1px solid var(--line);
+      background: #20242c;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .event-card-header {
+      display: grid;
+      grid-template-columns: minmax(180px, 0.35fr) minmax(260px, 1fr);
+      gap: 12px;
+      align-items: start;
+      padding: 12px 14px;
+      background: #2c323d;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .event-card-title {
+      font-weight: 900;
+      font-size: 17px;
+    }
+
+    .event-card-desc {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .event-setting-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .event-setting {
+      border: 1px solid rgba(69, 75, 86, 0.72);
+      background: #252a33;
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .event-setting-title {
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .event-setting textarea {
+      min-height: 76px;
+      margin-top: 8px;
+    }
+
+    .event-note-label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 5px;
+    }
+
+    .event-note-row textarea {
+      min-height: 68px;
+    }
+
+    aside {
+      position: sticky;
+      top: 86px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .summary-box {
+      background: rgba(34, 37, 43, 0.96);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .summary-box h2 {
+      margin: 0;
+      padding: 12px 14px;
+      font-size: 16px;
+      background: #2b2f37;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .summary-content {
+      padding: 12px 14px;
+    }
+
+    .progress {
+      height: 12px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #111827;
+      border: 1px solid #374151;
+    }
+
+    .progress > div {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #22c55e, #38bdf8);
+      transition: width 160ms ease;
+    }
+
+    .counter {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    #jsonOutput {
+      min-height: 420px;
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 12px;
+      white-space: pre;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .field label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 12px;
+      margin: 8px 0 0;
+    }
+
+    @media (max-width: 1100px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+      aside {
+        position: static;
+      }
+      .question {
+        grid-template-columns: 1fr;
+      }
+      .choice-group {
+        justify-content: start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div>
+        <h1>NDGRイベント監視 方針チェックシート</h1>
+        <p class="lead">はい・いいえ・その他で決めていく。最後に監視アプリ統合用の方針JSONを出す。</p>
+      </div>
+      <div class="top-actions">
+        <button type="button" class="primary" id="buildJsonTop">JSON作成</button>
+        <button type="button" id="copyJsonTop">JSONコピー</button>
+        <button type="button" id="downloadJsonTop">JSON保存</button>
+        <button type="button" class="danger" id="clearAllTop">リセット</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div>
+      <section>
+        <h2>0. 基本方針</h2>
+        <div class="section-body">
+          <div class="two-col">
+            <div class="field">
+              <label for="policyName">方針名</label>
+              <input id="policyName" type="text" value="NDGRイベント監視 統合方針">
+            </div>
+            <div class="field">
+              <label for="targetApp">対象</label>
+              <input id="targetApp" type="text" value="niconico-watch-app / lab simple_comment_viewer">
+            </div>
+          </div>
+          <p class="footer-note">ここで決めるのは、取得したNDGRイベントをどう保存・表示・反応・音声化するかだ。</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>1. 取得と保存</h2>
+        <div class="section-body" id="sectionGeneral"></div>
+      </section>
+
+      <section>
+        <h2>2. イベント種類ごとの扱い</h2>
+        <div class="section-body">
+          <p class="hint">イベントごとに「DB保存」「画面表示」「wave」「スキン/フォント」「反応処理」を決める。</p>
+          <div id="eventCards" class="event-card-list"></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>3. スペシャルユーザー</h2>
+        <div class="section-body" id="sectionSpecial"></div>
+      </section>
+
+      <section>
+        <h2>4. 広告・ギフト・来場者・運営</h2>
+        <div class="section-body" id="sectionSystemEvents"></div>
+      </section>
+
+      <section>
+        <h2>5. 表示とUI</h2>
+        <div class="section-body" id="sectionUi"></div>
+      </section>
+
+      <section>
+        <h2>6. アクションと安全弁</h2>
+        <div class="section-body" id="sectionActions"></div>
+      </section>
+
+      <section>
+        <h2>7. 未決定メモ</h2>
+        <div class="section-body">
+          <textarea id="freeMemo" placeholder="その他に決めたいこと、迷っていること、あとで実装したいことを書く"></textarea>
+        </div>
+      </section>
+    </div>
+
+    <aside>
+      <div class="summary-box">
+        <h2>回答状況</h2>
+        <div class="summary-content">
+          <div class="progress"><div id="progressBar"></div></div>
+          <div class="counter" id="answerCounter">0 / 0</div>
+          <p class="footer-note">「その他」を選んだ項目は補足欄に具体案を書くと、実装方針に落としやすい。</p>
+        </div>
+      </div>
+
+      <div class="summary-box">
+        <h2>出力JSON</h2>
+        <div class="summary-content">
+          <textarea id="jsonOutput" readonly></textarea>
+          <div class="top-actions" style="justify-content: flex-start; margin-top: 10px;">
+            <button type="button" class="primary" id="buildJson">JSON作成</button>
+            <button type="button" id="copyJson">コピー</button>
+            <button type="button" id="downloadJson">保存</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const CHOICES = [
+      { value: "yes", label: "はい", className: "yes" },
+      { value: "no", label: "いいえ", className: "no" },
+      { value: "other", label: "その他", className: "other" },
+    ];
+
+    const sections = {
+      general: [
+        ["persist_all_events", "取得できたイベントは全種類DBへ保存する", "184・生ID・主コメ・広告・ギフト・来場者・運営も保存対象にする"],
+        ["dedupe_by_message_id", "message_idで重複排除する", "リアルタイム取得と全件取得が重なっても二重登録しない"],
+        ["raw_json_keep", "raw_jsonも保存する", "後から未対応イベントを解析できるように生データを残す"],
+        ["payload_json_keep", "payload_jsonを保存する", "広告ポイントやギフト名などを構造化して残す"],
+        ["realtime_and_backward_same_path", "リアルタイム取得と全件取得を同じ正規化関数に通す", "入口が違ってもDB形式を揃える"],
+        ["classify_chat_identity", "通常コメントを184・生ID・主コメに分類する", "同じchatでもやりたいことが違うため、comment_classとして分ける"],
+        ["classify_operator_commands", "運営コマンド系を通常コメントと分離する", "広告・ギフト・来場通知・ゲーム起動・その他通知をoperator_command系に寄せる"],
+        ["delete_unmatched_temp_comments", "不要な一時コメントは破棄する", "監視対象に関係ない全件取得結果を残し続けない"],
+      ],
+      special: [
+        ["special_red_glow", "スペシャルユーザーコメントを赤く発光させる", "コメント監視タブ・確認タブ・HTMLで見つけやすくする"],
+        ["special_auto_register_broadcaster", "スペシャルユーザー発見時に配信者へ自動紐づけする", "対象ユーザーが来た放送者をスペシャルユーザーに関連付ける"],
+        ["special_trigger_post", "スペシャルユーザー検出時に投稿アクションを使う", "セッションIDを使ったコメント投稿につなげる"],
+        ["special_trigger_external_app", "スペシャルユーザー検出時に外部アプリを呼ぶ", "wav再生、別プロセス起動、通知などに使う"],
+        ["special_keyword_priority", "キーワードトリガーを最優先にする", "キーワード > 配信者個別 > スペシャルユーザー基本反応"],
+        ["special_hash_id_allowed", "184/ハッシュIDも検出対象にする", "アカウントIDと別名IDを両方扱う"],
+      ],
+      systemEvents: [
+        ["nicoad_parse_fields", "広告は送信者名・ポイント・累計ポイントを分解する", "message文字列から不足項目を補完する"],
+        ["gift_parse_fields", "ギフトはアイテム名・ポイント・送信者IDを表示する", "NDGR payloadの構造化フィールドをそのまま使う"],
+        ["visitor_info_parse", "来場者通知を専用イベントとして扱う", "/info 10相当やsimple_notificationを通常コメントと分ける"],
+        ["owner_comment_style", "主コメを別色・別フォントにする", "放送者本人/主コメントを一般コメントと視覚的に分ける"],
+        ["operator_style", "運営コマンド系を別色・別フォントにする", "広告・ギフト・来場・ゲーム起動などを通常コメントと混ぜない"],
+        ["event_sound_rules", "広告/ギフト/来場者/運営コマンドで別waveを鳴らす", "イベント種類ごとの音声ルールを作る"],
+        ["event_log_separate", "広告/ギフト/来場者/運営コマンドログを通常コメントと分ける", "あとで確認しやすいようにイベントログ扱いにする"],
+      ],
+      ui: [
+        ["comment_tab_show_existing_db", "コメント監視タブを開いた時、DB内の既存コメントも表示する", "接続後リアルタイム分だけではなく過去取得分も見せる"],
+        ["kind_filter_ui", "イベント種類フィルターを付ける", "184/生ID/主コメ/広告/ギフト/来場/運営などで表示切替する"],
+        ["font_skin_per_kind", "イベント種類ごとにフォント・スキンを選べるようにする", "NCVでやっていた見た目分けを再現する"],
+        ["sound_test_button", "wave設定に試聴ボタンを付ける", "設定時点で音を確認できるようにする"],
+        ["copy_context_menu", "右クリックでID/コメント/JSONをコピーできるようにする", "確認や調査を速くする"],
+        ["html_include_events", "HTMLにも広告・ギフト・運営イベントを載せる", "放送後ページでコメント以外のイベントも見返す"],
+      ],
+      actions: [
+        ["rule_priority_explicit", "ルール優先順位を明示する", "スペシャル、キーワード、イベント種類、配信者個別の順序を固定する"],
+        ["cooldown_per_rule", "ルールごとにクールダウンを設定する", "広告連打や来場者通知で音が鳴り続けないようにする"],
+        ["max_reaction_per_stream", "放送ごとに最大反応回数を決める", "投稿・音声・外部起動の暴発を抑える"],
+        ["post_action_requires_enabled", "投稿アクションは明示的に有効な時だけ動かす", "セッション設定済みでも無効なら投稿しない"],
+        ["external_app_per_event", "外部アプリ起動をイベント種類ごとに設定する", "NCVの外部プログラム実行を新方式で再現する"],
+        ["debug_raw_event_view", "DEBUG時にrawイベントを確認できる画面を作る", "普段はうるさくせず、調査時だけ深く見る"],
+      ],
+    };
+
+    const events = [
+      ["anonymous_184_chat", "184コメント", "匿名/184の一般コメント"],
+      ["account_chat", "生IDコメント", "匿名ではないアカウントID付きコメント"],
+      ["owner_comment", "主コメ", "放送者本人/主コメント"],
+      ["special_user_chat", "スペシャルユーザーコメント", "登録済み対象ユーザーのコメント。184/生IDと重なる可能性あり"],
+      ["operator_command_group", "運営コマンド系", "広告・ギフト・来場通知・ゲーム起動・その他通知の親分類"],
+      ["nicoad", "広告", "ニコニ広告"],
+      ["gift", "ギフト", "ギフト/アイテム"],
+      ["visitor", "来場者通知", "来場しました系の通知"],
+      ["operator", "運営コメント", "operator/moderator系"],
+      ["simple_notification", "通知", "simple_notification系"],
+      ["overflowed_chat", "特殊コメント", "overflowed/forwarded等"],
+      ["game_update", "ゲーム起動/更新", "game_update系"],
+      ["tag_updated", "タグ更新", "tag_updated系"],
+    ];
+
+    const eventFields = [
+      ["save_to_db", "DB保存", "DBへ保存するか。保存しない場合、後から確認できなくなる"],
+      ["display", "画面表示", "コメント監視タブや確認タブに表示するか"],
+      ["sound", "wave再生", "この種類のイベントで音を鳴らすか"],
+      ["style", "スキン/フォント変更", "色、フォント、スキン、表示形式を変えるか"],
+      ["reaction", "反応処理へ回す", "投稿、外部アプリ、登録、通知などの処理対象にするか"],
+    ];
+
+    function choiceGroup(name, defaultValue = "") {
+      return `<div class="choice-group" data-choice-group="${name}">` + CHOICES.map(choice => {
+        const checked = choice.value === defaultValue ? "checked" : "";
+        return `<label class="choice ${choice.className}">
+          <input type="radio" name="${name}" value="${choice.value}" ${checked}>
+          ${choice.label}
+        </label>`;
+      }).join("") + `</div>`;
+    }
+
+    function miniChoiceGroup(name, defaultValue = "") {
+      return `<div class="mini-choice" data-choice-group="${name}">` + CHOICES.map(choice => {
+        const checked = choice.value === defaultValue ? "checked" : "";
+        return `<label class="choice ${choice.className}">
+          <input type="radio" name="${name}" value="${choice.value}" ${checked}>
+          ${choice.label}
+        </label>`;
+      }).join("") + `</div>`;
+    }
+
+    function renderQuestions(containerId, items) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = items.map(([key, title, desc]) => `
+        <div class="question" data-question="${key}">
+          <div>
+            <div class="q-title">${title}</div>
+            <div class="q-desc">${desc}</div>
+          </div>
+          ${choiceGroup(key)}
+          <textarea data-note-for="${key}" placeholder="その他・条件・例外を書く"></textarea>
+        </div>
+      `).join("");
+    }
+
+    function defaultEventChoice(eventKey, fieldKey) {
+      if (["anonymous_184_chat", "account_chat", "owner_comment"].includes(eventKey)) {
+        if (fieldKey === "save_to_db" || fieldKey === "display") return "yes";
+      }
+      return "";
+    }
+
+    function renderEventMatrix() {
+      const container = document.getElementById("eventCards");
+      container.innerHTML = events.map(([eventKey, title, desc]) => {
+        const settings = eventFields.map(([fieldKey, fieldTitle, fieldDesc]) => `
+          <div class="event-setting" data-event-setting="${eventKey}.${fieldKey}">
+            <div class="event-setting-title">${fieldTitle}</div>
+            <div class="q-desc">${fieldDesc}</div>
+            ${miniChoiceGroup(`event.${eventKey}.${fieldKey}`, defaultEventChoice(eventKey, fieldKey))}
+            <textarea
+              data-event-note="${eventKey}.${fieldKey}"
+              placeholder="${fieldTitle} のその他理由、条件、具体設定を書く"></textarea>
+          </div>
+        `).join("");
+
+        return `
+          <article class="event-card" data-event-kind="${eventKey}">
+            <div class="event-card-header">
+              <div>
+                <div class="event-card-title">${title}</div>
+                <div class="event-sub">${eventKey}</div>
+              </div>
+              <div class="event-card-desc">${desc}</div>
+            </div>
+            <div class="event-setting-grid">${settings}</div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function getChoice(name) {
+      const selected = document.querySelector(`input[name="${CSS.escape(name)}"]:checked`);
+      return selected ? selected.value : "";
+    }
+
+    function collectSection(items) {
+      const result = {};
+      for (const [key, title, desc] of items) {
+        result[key] = {
+          label: title,
+          answer: getChoice(key),
+          note: document.querySelector(`[data-note-for="${key}"]`)?.value.trim() || "",
+        };
+      }
+      return result;
+    }
+
+    function collectEvents() {
+      const result = {};
+      for (const [key, title, desc] of events) {
+        const entry = {
+          label: title,
+          description: desc,
+          settings: {},
+        };
+        for (const [fieldKey, fieldTitle] of eventFields) {
+          entry.settings[fieldKey] = {
+            label: fieldTitle,
+            answer: getChoice(`event.${key}.${fieldKey}`),
+            note: document.querySelector(`[data-event-note="${key}.${fieldKey}"]`)?.value.trim() || "",
+          };
+        }
+        result[key] = entry;
+      }
+      return result;
+    }
+
+    function buildPolicy() {
+      return {
+        generated_at: new Date().toISOString(),
+        policy_name: document.getElementById("policyName").value.trim(),
+        target_app: document.getElementById("targetApp").value.trim(),
+        answer_scale: {
+          yes: "採用する",
+          no: "採用しない",
+          other: "条件付き、別案、未確定",
+          blank: "未回答",
+        },
+        sections: {
+          acquisition_and_storage: collectSection(sections.general),
+          event_kinds: collectEvents(),
+          special_user: collectSection(sections.special),
+          system_events: collectSection(sections.systemEvents),
+          display_ui: collectSection(sections.ui),
+          actions_and_guards: collectSection(sections.actions),
+        },
+        free_memo: document.getElementById("freeMemo").value.trim(),
+      };
+    }
+
+    function updateJsonOutput() {
+      const policy = buildPolicy();
+      document.getElementById("jsonOutput").value = JSON.stringify(policy, null, 2);
+      saveState();
+      updateProgress();
+      return policy;
+    }
+
+    async function copyJson() {
+      const policy = updateJsonOutput();
+      const text = JSON.stringify(policy, null, 2);
+      await navigator.clipboard.writeText(text);
+    }
+
+    function downloadJson() {
+      const policy = updateJsonOutput();
+      const blob = new Blob([JSON.stringify(policy, null, 2)], { type: "application/json;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "ndgr_event_policy.json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function allRadioNames() {
+      return Array.from(new Set(Array.from(document.querySelectorAll("input[type='radio']")).map(input => input.name)));
+    }
+
+    function updateProgress() {
+      const names = allRadioNames();
+      const answered = names.filter(name => getChoice(name)).length;
+      const total = names.length;
+      const percent = total ? Math.round((answered / total) * 100) : 0;
+      document.getElementById("progressBar").style.width = `${percent}%`;
+      document.getElementById("answerCounter").textContent = `${answered} / ${total} (${percent}%)`;
+    }
+
+    function saveState() {
+      const state = {
+        inputs: {},
+        radios: {},
+        textareas: {},
+      };
+      document.querySelectorAll("input[type='text']").forEach(input => state.inputs[input.id] = input.value);
+      allRadioNames().forEach(name => state.radios[name] = getChoice(name));
+      document.querySelectorAll("textarea").forEach((textarea, idx) => {
+        const key = textarea.id || textarea.dataset.noteFor || textarea.dataset.eventNote || `textarea_${idx}`;
+        state.textareas[key] = textarea.value;
+      });
+      localStorage.setItem("ndgr_event_policy_questionnaire", JSON.stringify(state));
+    }
+
+    function restoreState() {
+      const raw = localStorage.getItem("ndgr_event_policy_questionnaire");
+      if (!raw) return;
+      let state;
+      try {
+        state = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      for (const [id, value] of Object.entries(state.inputs || {})) {
+        const input = document.getElementById(id);
+        if (input) input.value = value;
+      }
+      for (const [name, value] of Object.entries(state.radios || {})) {
+        const radio = document.querySelector(`input[name="${CSS.escape(name)}"][value="${CSS.escape(value)}"]`);
+        if (radio) radio.checked = true;
+      }
+      document.querySelectorAll("textarea").forEach((textarea, idx) => {
+        const key = textarea.id || textarea.dataset.noteFor || textarea.dataset.eventNote || `textarea_${idx}`;
+        if (Object.prototype.hasOwnProperty.call(state.textareas || {}, key)) {
+          textarea.value = state.textareas[key];
+        }
+      });
+    }
+
+    function clearAll() {
+      if (!confirm("回答をリセットします。よろしいですか？")) return;
+      localStorage.removeItem("ndgr_event_policy_questionnaire");
+      document.querySelectorAll("input[type='radio']").forEach(input => input.checked = false);
+      document.querySelectorAll("textarea").forEach(textarea => textarea.value = "");
+      document.getElementById("policyName").value = "NDGRイベント監視 統合方針";
+      document.getElementById("targetApp").value = "niconico-watch-app / lab simple_comment_viewer";
+      updateJsonOutput();
+    }
+
+    function bindButtons() {
+      for (const id of ["buildJson", "buildJsonTop"]) {
+        document.getElementById(id).addEventListener("click", updateJsonOutput);
+      }
+      for (const id of ["copyJson", "copyJsonTop"]) {
+        document.getElementById(id).addEventListener("click", copyJson);
+      }
+      for (const id of ["downloadJson", "downloadJsonTop"]) {
+        document.getElementById(id).addEventListener("click", downloadJson);
+      }
+      for (const id of ["clearAllTop"]) {
+        document.getElementById(id).addEventListener("click", clearAll);
+      }
+      document.addEventListener("change", event => {
+        if (event.target.matches("input, textarea")) updateJsonOutput();
+      });
+      document.addEventListener("input", event => {
+        if (event.target.matches("input[type='text'], textarea")) updateJsonOutput();
+      });
+    }
+
+    renderQuestions("sectionGeneral", sections.general);
+    renderQuestions("sectionSpecial", sections.special);
+    renderQuestions("sectionSystemEvents", sections.systemEvents);
+    renderQuestions("sectionUi", sections.ui);
+    renderQuestions("sectionActions", sections.actions);
+    renderEventMatrix();
+    restoreState();
+    bindButtons();
+    updateJsonOutput();
+  </script>
+</body>
+</html>

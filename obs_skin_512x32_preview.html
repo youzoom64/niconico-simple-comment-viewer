@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OBS Skin 512x32 Preview</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    .obs-root {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: transparent;
+      pointer-events: none;
+      font-family: "Yu Gothic UI", "Meiryo", sans-serif;
+    }
+
+    .skin-comment {
+      position: absolute;
+      left: 0;
+      width: 512px;
+      height: 32px;
+      transform: translateX(100vw);
+      animation-name: flow-to-left-edge;
+      animation-duration: 2.2s;
+      animation-timing-function: cubic-bezier(.08, .82, .18, 1);
+      animation-fill-mode: forwards;
+      transition: bottom 420ms ease;
+      will-change: transform, opacity, bottom;
+    }
+
+    .skin-comment img {
+      position: absolute;
+      inset: 0;
+      width: 512px;
+      height: 32px;
+      object-fit: fill;
+      display: block;
+    }
+
+    .skin-comment .text {
+      position: absolute;
+      left: 18px;
+      right: 14px;
+      top: 0;
+      height: 32px;
+      line-height: 32px;
+      color: #ffffff;
+      font-size: 20px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-shadow:
+        0 1px 2px rgba(0, 0, 0, .95),
+        0 0 5px rgba(0, 0, 0, .85);
+    }
+
+    @keyframes flow-to-left-edge {
+      0% {
+        transform: translateX(100vw);
+        opacity: 0;
+      }
+      8% {
+        opacity: 1;
+      }
+      100% {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="obsRoot" class="obs-root"></div>
+
+  <script>
+    const SKIN_URL = "assets/skin_5.png";
+    const SKIN_WIDTH = 512;
+    const SKIN_HEIGHT = 32;
+    const RAISE_STEP = 32;
+    const MAX_LANES = 24;
+    const RAISE_INTERVAL_MS = 20000;
+    const INTERVAL_MS = 1800;
+
+    const samples = [
+      "これは512x32のスキンで流れるコメントです",
+      "背景は透明なのでOBS Browser Sourceで重ねられます",
+      "生IDごとにスキン・フォント・VOICEVOXを切り替える想定",
+      "広告・ギフト・運営通知も同じレーンに流せます",
+      "右から高速で入り、左へ行くほど減速します"
+    ];
+
+    const root = document.getElementById("obsRoot");
+    let sampleCursor = 0;
+    let idleRaiseTimer = null;
+    const activeComments = [];
+
+    function resetIdleRaiseTimer() {
+      if (idleRaiseTimer !== null) {
+        window.clearTimeout(idleRaiseTimer);
+      }
+      idleRaiseTimer = window.setTimeout(() => {
+        raiseExistingComments();
+        resetIdleRaiseTimer();
+      }, RAISE_INTERVAL_MS);
+    }
+
+    function raiseExistingComments() {
+      for (const item of activeComments) {
+        item.bottom += RAISE_STEP;
+        item.node.style.bottom = `${item.bottom}px`;
+      }
+      cleanupOffscreenComments();
+    }
+
+    function cleanupOffscreenComments() {
+      const maxBottom = window.innerHeight + SKIN_HEIGHT;
+      for (let i = activeComments.length - 1; i >= 0; i -= 1) {
+        if (activeComments[i].bottom > maxBottom || activeComments[i].bottom >= MAX_LANES * RAISE_STEP) {
+          activeComments[i].node.remove();
+          activeComments.splice(i, 1);
+        }
+      }
+    }
+
+    function spawnComment(text) {
+      raiseExistingComments();
+      resetIdleRaiseTimer();
+
+      const node = document.createElement("div");
+      node.className = "skin-comment";
+      node.style.bottom = "0px";
+      node.style.width = `${SKIN_WIDTH}px`;
+      node.style.height = `${SKIN_HEIGHT}px`;
+
+      const img = document.createElement("img");
+      img.src = SKIN_URL;
+      img.alt = "";
+
+      const span = document.createElement("span");
+      span.className = "text";
+      span.textContent = text;
+
+      node.appendChild(img);
+      node.appendChild(span);
+      root.appendChild(node);
+      activeComments.push({ node, bottom: 0 });
+    }
+
+    function tick() {
+      spawnComment(samples[sampleCursor % samples.length]);
+      sampleCursor += 1;
+    }
+
+    tick();
+    window.setInterval(tick, INTERVAL_MS);
+    resetIdleRaiseTimer();
+  </script>
+</body>
+</html>

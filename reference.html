@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>シンプルコメビュ 参考メモ</title>
+  <style>
+    body {
+      margin: 24px;
+      font-family: "Yu Gothic UI", "Meiryo", sans-serif;
+      background: #181818;
+      color: #eeeeee;
+      line-height: 1.7;
+    }
+    h1, h2 { color: #8fd3ff; }
+    code {
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 0.1rem 0.35rem;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 1rem 0 2rem;
+      background: #222;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 0.65rem;
+      vertical-align: top;
+    }
+    th { background: #303846; }
+    .warn { color: #ffd58a; }
+  </style>
+</head>
+<body>
+  <h1>シンプルコメビュ 参考メモ</h1>
+
+  <h2>今回作るもの</h2>
+  <p>
+    NDGR の protobuf を直接読み、<code>chat</code> だけでなく、取れる message 種別を全部表示・保存する検証用コメビュ。
+    標準の <code>NDGRClient.downloadBackwardComments()</code> はコメント扱いに変換できるものだけを返すため、
+    広告、ギフト、通知系などを確認する用途には足りない。
+  </p>
+
+  <h2>参考にする既存アプリケーション/メモ</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>対象</th>
+        <th>位置づけ</th>
+        <th>今回への使い方</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Chrome拡張「ニコ生コメビュ」v0.3.4</td>
+        <td>投稿通信の参考。<code>docs/special_user_gui_concept.html</code> にメモあり。</td>
+        <td>投稿側の参考。コメント全取得の実装本体には使わない。</td>
+      </tr>
+      <tr>
+        <td><code>C:\project_root\app_workspaces\ncv_special_monitor</code></td>
+        <td>NCVのXMLログとNCVプラグインWebSocketを使う旧監視アプリ。</td>
+        <td>欲しい項目の参考。NDGR全種別取得の直接材料ではない。</td>
+      </tr>
+      <tr>
+        <td><code>ndgr_client</code></td>
+        <td>NDGR View / Backward / Segment API への接続ライブラリ。</td>
+        <td>低レイヤの <code>fetchChunkedEntries()</code> と <code>PackedSegment.messages</code> を使う。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>NDGR message 種別</h2>
+  <p>確認時点で <code>NicoliveMessage</code> にある oneof 種別。</p>
+  <table>
+    <thead>
+      <tr>
+        <th>種別</th>
+        <th>意味の目安</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td><code>chat</code></td><td>通常コメント</td></tr>
+      <tr><td><code>overflowed_chat</code></td><td>アリーナからあふれたコメント</td></tr>
+      <tr><td><code>forwarded_chat</code></td><td>転送されたコメント系</td></tr>
+      <tr><td><code>simple_notification</code></td><td>通知系</td></tr>
+      <tr><td><code>simple_notification_v2</code></td><td>通知系 v2</td></tr>
+      <tr><td><code>gift</code></td><td>ギフト</td></tr>
+      <tr><td><code>nicoad</code></td><td>ニコニ広告</td></tr>
+      <tr><td><code>game_update</code></td><td>ゲーム/イベント更新系</td></tr>
+      <tr><td><code>tag_updated</code></td><td>タグ更新</td></tr>
+      <tr><td><code>moderator_updated</code></td><td>モデレーター更新</td></tr>
+      <tr><td><code>ssng_updated</code></td><td>SSNG更新</td></tr>
+      <tr><td><code>akashic_message_event</code></td><td>Akashic関連イベント</td></tr>
+    </tbody>
+  </table>
+
+  <p class="warn">
+    注意: このラボは、取れるものを捨てないことを優先する。未知の種別や未知フィールドは raw JSON 側に残す。
+  </p>
+</body>
+</html>

@@ -1,0 +1,1 @@
+"""NDGR client adapter placeholder."""

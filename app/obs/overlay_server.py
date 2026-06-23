@@ -1,0 +1,1 @@
+"""OBS overlay server placeholder."""

@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NDGR全イベントコメビュ 方針シート v2</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #15171b;
+      --panel: #22262e;
+      --panel2: #2d333d;
+      --line: #454d5a;
+      --text: #f2f6ff;
+      --muted: #aeb8c8;
+      --accent: #38bdf8;
+      --yes: #22c55e;
+      --no: #ef4444;
+      --other: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
+      line-height: 1.55;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(21, 23, 27, 0.94);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+    .header-inner {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 14px 20px;
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+    }
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+    .lead {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    main {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 430px;
+      gap: 18px;
+      align-items: start;
+    }
+    section, aside > div {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    h2 {
+      margin: 0;
+      padding: 12px 14px;
+      font-size: 17px;
+      background: var(--panel2);
+      border-bottom: 1px solid var(--line);
+    }
+    .body { padding: 14px; }
+    .note {
+      color: var(--muted);
+      font-size: 13px;
+      margin: 0 0 12px;
+    }
+    .scope-box {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    label.caption {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    input[type="text"], textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #171b22;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px;
+      font: inherit;
+    }
+    textarea {
+      min-height: 74px;
+      resize: vertical;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: #303743;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary {
+      background: #0ea5e9;
+      border-color: #38bdf8;
+      color: #07111d;
+    }
+    button.danger {
+      background: #3b2328;
+      border-color: #87414c;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .question {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) auto minmax(260px, 0.8fr);
+      gap: 12px;
+      padding: 10px 0;
+      border-top: 1px solid rgba(69, 77, 90, 0.65);
+      align-items: start;
+    }
+    .question:first-child { border-top: 0; padding-top: 0; }
+    .q-title { font-weight: 800; }
+    .q-desc { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .choice-group {
+      display: inline-grid;
+      grid-template-columns: repeat(3, auto);
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .choice {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 66px;
+      border: 1px solid var(--line);
+      background: #1f2530;
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .choice input {
+      appearance: none;
+      width: 0;
+      height: 0;
+      margin: 0;
+    }
+    .choice:has(input:checked) {
+      color: #07111d;
+      font-weight: 900;
+    }
+    .choice.yes:has(input:checked) { background: var(--yes); border-color: var(--yes); }
+    .choice.no:has(input:checked) { background: var(--no); border-color: var(--no); color: #fff; }
+    .choice.other:has(input:checked) { background: var(--other); border-color: var(--other); }
+    .category-list {
+      display: grid;
+      gap: 14px;
+    }
+    .category {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #1e232b;
+    }
+    .category-head {
+      display: grid;
+      grid-template-columns: 220px minmax(260px, 1fr);
+      gap: 12px;
+      padding: 12px 14px;
+      background: #2b323d;
+      border-bottom: 1px solid var(--line);
+    }
+    .category-title {
+      font-weight: 900;
+      font-size: 17px;
+    }
+    .category-key {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+    .category-desc {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .setting-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 10px;
+      padding: 12px;
+    }
+    .setting {
+      border: 1px solid rgba(69, 77, 90, 0.72);
+      background: #252b35;
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .setting-title {
+      font-weight: 850;
+      margin-bottom: 7px;
+    }
+    .setting textarea {
+      min-height: 72px;
+      margin-top: 8px;
+    }
+    aside {
+      position: sticky;
+      top: 84px;
+    }
+    .progress {
+      height: 12px;
+      border: 1px solid #374151;
+      background: #111827;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .progress > div {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #22c55e, #38bdf8);
+      transition: width 150ms ease;
+    }
+    .counter {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    #jsonOutput {
+      min-height: 460px;
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 12px;
+      white-space: pre;
+    }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .badge {
+      border: 1px solid #64748b;
+      background: #111827;
+      color: #cbd5e1;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+    }
+    @media (max-width: 1120px) {
+      main { grid-template-columns: 1fr; }
+      aside { position: static; }
+      .question, .category-head { grid-template-columns: 1fr; }
+      .actions { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div>
+        <h1>NDGR全イベントコメビュ 方針シート v2</h1>
+        <p class="lead">対象はlabのシンプルコメビュだけ。監視アプリ本体、投稿、配信者監視、HTML生成の質問は入れない。</p>
+      </div>
+      <div class="actions">
+        <button class="primary" type="button" id="buildTop">JSON作成</button>
+        <button type="button" id="copyTop">JSONコピー</button>
+        <button type="button" id="downloadTop">JSON保存</button>
+        <button class="danger" type="button" id="resetTop">リセット</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div>
+      <section>
+        <h2>0. スコープ確認</h2>
+        <div class="body">
+          <div class="scope-box">
+            <div>
+              <label class="caption" for="policyName">方針名</label>
+              <input id="policyName" type="text" value="NDGR全イベントコメビュ 方針">
+            </div>
+            <div>
+              <label class="caption" for="targetApp">対象</label>
+              <input id="targetApp" type="text" value="lab/simple_comment_viewer">
+            </div>
+          </div>
+          <p class="note" style="margin-top: 12px;">ここでは「取得したNDGRイベントを、コメビュ上でどう分類・表示・保存・音声化するか」だけを決める。</p>
+          <div class="badges">
+            <span class="badge">監視アプリ統合は後</span>
+            <span class="badge">投稿アクションは後</span>
+            <span class="badge">スペシャルユーザー紐づけは後</span>
+            <span class="badge">HTML生成は後</span>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>1. 取得・保存の土台</h2>
+        <div class="body" id="baseQuestions"></div>
+      </section>
+
+      <section>
+        <h2>2. コメント/イベント分類ごとの扱い</h2>
+        <div class="body">
+          <p class="note">ここが本体。各カテゴリごとに、表示・DB保存・wave・見た目・ログ・出力を一回だけ決める。</p>
+          <div id="categoryList" class="category-list"></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>3. UI共通機能</h2>
+        <div class="body" id="uiQuestions"></div>
+      </section>
+
+      <section>
+        <h2>4. ログ・出力</h2>
+        <div class="body" id="logQuestions"></div>
+      </section>
+
+      <section>
+        <h2>5. 未決定メモ</h2>
+        <div class="body">
+          <textarea id="freeMemo" placeholder="まだ迷っていること、その他分類、後で検証したいNDGRイベントなどを書く"></textarea>
+        </div>
+      </section>
+
+      <section>
+        <h2>旧JSONから拾う</h2>
+        <div class="body">
+          <p class="note">前のHTMLで途中まで書いたJSONがあれば貼り付けて「読み込み」。拾える項目だけv2へ移す。</p>
+          <textarea id="importJson" placeholder="旧JSONを貼る"></textarea>
+          <div class="actions" style="justify-content: flex-start; margin-top: 8px;">
+            <button type="button" id="importOld">旧JSONを読み込み</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <aside>
+      <div>
+        <h2>回答状況</h2>
+        <div class="body">
+          <div class="progress"><div id="progressBar"></div></div>
+          <div class="counter" id="counter">0 / 0</div>
+        </div>
+      </div>
+
+      <div>
+        <h2>出力JSON</h2>
+        <div class="body">
+          <textarea id="jsonOutput" readonly></textarea>
+          <div class="actions" style="justify-content: flex-start; margin-top: 8px;">
+            <button class="primary" type="button" id="build">JSON作成</button>
+            <button type="button" id="copy">コピー</button>
+            <button type="button" id="download">保存</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const STORE_KEY = "ndgr_event_viewer_policy_v2";
+    const choices = [
+      ["yes", "はい", "yes"],
+      ["no", "いいえ", "no"],
+      ["other", "その他", "other"],
+    ];
+
+    const baseQuestions = [
+      ["realtime_stream", "接続ボタンでリアルタイム受信する", "放送中のイベントを流し続ける"],
+      ["backward_fetch", "全件取得ボタンで過去ログを取得する", "放送中または終了前の過去コメントをまとめて取得する"],
+      ["same_normalizer", "リアルタイムと全件取得を同じ正規化関数へ通す", "入口が違ってもDB/表示形式を揃える"],
+      ["dedupe_message_id", "message_idで重複排除する", "同じイベントを二重表示・二重保存しない"],
+      ["save_raw_json", "raw_jsonを保存する", "未対応イベントの後解析用に生データを残す"],
+      ["save_payload_json", "payload_jsonを保存する", "ギフト名、ポイント、広告messageなどの構造データを残す"],
+    ];
+
+    const categories = [
+      ["anonymous_184", "184コメント", "匿名/184の一般コメント。生IDとは別扱いにする"],
+      ["account_comment", "生IDコメント", "アカウントIDが見えている通常コメント"],
+      ["owner_comment", "主コメ", "放送者本人、または主コメント扱いのコメント"],
+      ["nicoad", "広告", "ニコニ広告。ポイント、広告主、messageを持つ"],
+      ["gift", "ギフト", "ギフト/アイテム。送信者ID、名前、ポイント、アイテム名を持つ"],
+      ["visitor_notice", "来場通知", "来場しました、サポーター来場などの通知"],
+      ["game_event", "ゲーム起動/更新", "game_updateなど、ニコ生ゲーム関連イベント"],
+      ["operator_comment", "運営コメント", "operator/moderatorなどの運営系コメント"],
+      ["system_notification", "その他通知", "simple_notification、tag_updated、ssng_updatedなど"],
+      ["unknown_event", "未知イベント", "まだ分類できないNDGRイベント"],
+    ];
+
+    const categoryActions = [
+      ["display", "画面に表示する", "一覧へ出すか。非表示でも保存だけする選択がある"],
+      ["db_save", "DBに保存する", "後で検索・確認できるように保存するか"],
+      ["wave", "waveを鳴らす", "この分類で音を鳴らすか"],
+      ["visual_style", "フォント/スキンを変える", "色、フォント、背景、アイコンなどを変えるか"],
+      ["gui_log", "GUIログに出す", "画面下部やログ欄にINFOとして出すか"],
+      ["cmd_debug_log", "CMD DEBUGログに出す", "調査用に詳細ログへ出すか"],
+      ["export_json_csv", "JSON/CSV出力に含める", "保存ファイルに含めるか"],
+      ["raw_panel", "raw表示対象にする", "詳細表示でraw/payloadを見られるようにするか"],
+    ];
+
+    const uiQuestions = [
+      ["filter_by_category", "分類フィルターを付ける", "184、生ID、広告、ギフトなどで表示切替する"],
+      ["search_text", "コメント本文/イベント本文で検索する", "通常コメント、広告message、ギフト名などを検索対象にする"],
+      ["right_click_copy", "右クリックコピーを付ける", "本文、user_id、message_id、raw_jsonなどをコピーする"],
+      ["raw_detail_view", "raw/payload詳細ビューを付ける", "選択行の生データを確認できるようにする"],
+      ["sound_test", "wave試聴ボタンを付ける", "設定した音をその場で確認する"],
+    ];
+
+    const logQuestions = [
+      ["gui_info_cmd_debug", "GUIはINFO、CMDはDEBUGを基本にする", "通常画面はうるさくせず、CMD側で詳細を見る"],
+      ["no_frame_spam", "毎フレーム級のログは出さない", "大量イベントでもログで固まらないようにする"],
+      ["save_jsonl", "JSONLで保存する", "追記しやすい形式で保存する"],
+      ["save_json", "JSONで保存する", "まとめて開きやすい形式で保存する"],
+      ["save_csv", "CSVで保存する", "Excelや簡易確認用に保存する"],
+    ];
+
+    function choiceGroup(name, value = "") {
+      return `<div class="choice-group">` + choices.map(([v, label, cls]) => {
+        const checked = v === value ? "checked" : "";
+        return `<label class="choice ${cls}"><input type="radio" name="${name}" value="${v}" ${checked}>${label}</label>`;
+      }).join("") + `</div>`;
+    }
+
+    function renderQuestionList(id, questions) {
+      const root = document.getElementById(id);
+      root.innerHTML = questions.map(([key, title, desc]) => `
+        <div class="question" data-question="${key}">
+          <div>
+            <div class="q-title">${title}</div>
+            <div class="q-desc">${desc}</div>
+          </div>
+          ${choiceGroup(`q.${key}`)}
+          <textarea data-note="q.${key}" placeholder="その他理由、条件、例外"></textarea>
+        </div>
+      `).join("");
+    }
+
+    function defaultCategoryAnswer(categoryKey, actionKey) {
+      if (["anonymous_184", "account_comment", "owner_comment"].includes(categoryKey)) {
+        if (actionKey === "display" || actionKey === "db_save" || actionKey === "export_json_csv") return "yes";
+      }
+      if (["nicoad", "gift", "visitor_notice", "operator_comment"].includes(categoryKey)) {
+        if (actionKey === "display" || actionKey === "db_save" || actionKey === "visual_style" || actionKey === "export_json_csv") return "yes";
+      }
+      return "";
+    }
+
+    function renderCategories() {
+      const root = document.getElementById("categoryList");
+      root.innerHTML = categories.map(([categoryKey, title, desc]) => {
+        const settings = categoryActions.map(([actionKey, actionTitle, actionDesc]) => `
+          <div class="setting">
+            <div class="setting-title">${actionTitle}</div>
+            <div class="q-desc">${actionDesc}</div>
+            ${choiceGroup(`cat.${categoryKey}.${actionKey}`, defaultCategoryAnswer(categoryKey, actionKey))}
+            <textarea data-note="cat.${categoryKey}.${actionKey}" placeholder="${actionTitle} のその他理由、条件、具体設定"></textarea>
+          </div>
+        `).join("");
+        return `
+          <article class="category" data-category="${categoryKey}">
+            <div class="category-head">
+              <div>
+                <div class="category-title">${title}</div>
+                <div class="category-key">${categoryKey}</div>
+              </div>
+              <div class="category-desc">${desc}</div>
+            </div>
+            <div class="setting-grid">${settings}</div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function getChoice(name) {
+      const node = document.querySelector(`input[name="${CSS.escape(name)}"]:checked`);
+      return node ? node.value : "";
+    }
+
+    function setChoice(name, value) {
+      if (!value) return;
+      const node = document.querySelector(`input[name="${CSS.escape(name)}"][value="${CSS.escape(value)}"]`);
+      if (node) node.checked = true;
+    }
+
+    function getNote(name) {
+      return document.querySelector(`[data-note="${CSS.escape(name)}"]`)?.value.trim() || "";
+    }
+
+    function setNote(name, value) {
+      const node = document.querySelector(`[data-note="${CSS.escape(name)}"]`);
+      if (node && value) node.value = value;
+    }
+
+    function collectQuestions(questions) {
+      const result = {};
+      for (const [key, title, desc] of questions) {
+        const name = `q.${key}`;
+        result[key] = { label: title, description: desc, answer: getChoice(name), note: getNote(name) };
+      }
+      return result;
+    }
+
+    function collectCategories() {
+      const result = {};
+      for (const [categoryKey, title, desc] of categories) {
+        const actions = {};
+        for (const [actionKey, actionTitle, actionDesc] of categoryActions) {
+          const name = `cat.${categoryKey}.${actionKey}`;
+          actions[actionKey] = {
+            label: actionTitle,
+            description: actionDesc,
+            answer: getChoice(name),
+            note: getNote(name),
+          };
+        }
+        result[categoryKey] = { label: title, description: desc, actions };
+      }
+      return result;
+    }
+
+    function buildPolicy() {
+      return {
+        generated_at: new Date().toISOString(),
+        scope: "ndgr_simple_comment_viewer_lab_only",
+        excluded_from_this_sheet: [
+          "監視アプリ本体統合",
+          "スペシャルユーザー自動紐づけ",
+          "投稿アクション",
+          "配信者監視",
+          "放送後HTML生成",
+        ],
+        policy_name: document.getElementById("policyName").value.trim(),
+        target_app: document.getElementById("targetApp").value.trim(),
+        answer_scale: {
+          yes: "採用",
+          no: "不採用",
+          other: "条件付き/別案/未確定",
+          blank: "未回答",
+        },
+        acquisition_storage: collectQuestions(baseQuestions),
+        categories: collectCategories(),
+        ui_common: collectQuestions(uiQuestions),
+        logging_output: collectQuestions(logQuestions),
+        free_memo: document.getElementById("freeMemo").value.trim(),
+      };
+    }
+
+    function updateJson() {
+      const policy = buildPolicy();
+      document.getElementById("jsonOutput").value = JSON.stringify(policy, null, 2);
+      saveState();
+      updateProgress();
+      return policy;
+    }
+
+    function radioNames() {
+      return Array.from(new Set(Array.from(document.querySelectorAll("input[type='radio']")).map(x => x.name)));
+    }
+
+    function updateProgress() {
+      const names = radioNames();
+      const done = names.filter(name => getChoice(name)).length;
+      const percent = names.length ? Math.round((done / names.length) * 100) : 0;
+      document.getElementById("progressBar").style.width = `${percent}%`;
+      document.getElementById("counter").textContent = `${done} / ${names.length} (${percent}%)`;
+    }
+
+    function saveState() {
+      const state = {
+        policyName: document.getElementById("policyName").value,
+        targetApp: document.getElementById("targetApp").value,
+        freeMemo: document.getElementById("freeMemo").value,
+        radios: {},
+        notes: {},
+      };
+      for (const name of radioNames()) state.radios[name] = getChoice(name);
+      document.querySelectorAll("[data-note]").forEach(node => state.notes[node.dataset.note] = node.value);
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    }
+
+    function restoreState() {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return;
+      let state;
+      try { state = JSON.parse(raw); } catch { return; }
+      if (state.policyName) document.getElementById("policyName").value = state.policyName;
+      if (state.targetApp) document.getElementById("targetApp").value = state.targetApp;
+      if (state.freeMemo) document.getElementById("freeMemo").value = state.freeMemo;
+      for (const [name, value] of Object.entries(state.radios || {})) setChoice(name, value);
+      for (const [name, value] of Object.entries(state.notes || {})) setNote(name, value);
+    }
+
+    async function copyJson() {
+      await navigator.clipboard.writeText(JSON.stringify(updateJson(), null, 2));
+    }
+
+    function downloadJson() {
+      const blob = new Blob([JSON.stringify(updateJson(), null, 2)], { type: "application/json;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "ndgr_event_viewer_policy.json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function resetAll() {
+      if (!confirm("v2の回答をリセットします。よろしいですか？")) return;
+      localStorage.removeItem(STORE_KEY);
+      document.querySelectorAll("input[type='radio']").forEach(x => x.checked = false);
+      document.querySelectorAll("textarea").forEach(x => x.value = "");
+      document.getElementById("policyName").value = "NDGR全イベントコメビュ 方針";
+      document.getElementById("targetApp").value = "lab/simple_comment_viewer";
+      updateJson();
+    }
+
+    function importOldJson() {
+      const text = document.getElementById("importJson").value.trim();
+      if (!text) return;
+      let old;
+      try { old = JSON.parse(text); } catch {
+        alert("JSONとして読めません");
+        return;
+      }
+      const oldEvents = old.sections?.event_kinds || {};
+      const keyMap = {
+        anonymous_184_chat: "anonymous_184",
+        account_chat: "account_comment",
+        owner_comment: "owner_comment",
+        nicoad: "nicoad",
+        gift: "gift",
+        visitor: "visitor_notice",
+        game_update: "game_event",
+        operator: "operator_comment",
+        simple_notification: "system_notification",
+        tag_updated: "system_notification",
+      };
+      const actionMap = {
+        save_to_db: "db_save",
+        display: "display",
+        sound: "wave",
+        style: "visual_style",
+      };
+      for (const [oldKey, nextKey] of Object.entries(keyMap)) {
+        const oldEntry = oldEvents[oldKey];
+        if (!oldEntry?.settings) continue;
+        for (const [oldAction, nextAction] of Object.entries(actionMap)) {
+          const setting = oldEntry.settings[oldAction];
+          if (!setting) continue;
+          setChoice(`cat.${nextKey}.${nextAction}`, setting.answer);
+          setNote(`cat.${nextKey}.${nextAction}`, setting.note);
+        }
+      }
+      updateJson();
+      alert("拾える項目だけv2へ読み込みました");
+    }
+
+    function bind() {
+      for (const id of ["build", "buildTop"]) document.getElementById(id).addEventListener("click", updateJson);
+      for (const id of ["copy", "copyTop"]) document.getElementById(id).addEventListener("click", copyJson);
+      for (const id of ["download", "downloadTop"]) document.getElementById(id).addEventListener("click", downloadJson);
+      document.getElementById("resetTop").addEventListener("click", resetAll);
+      document.getElementById("importOld").addEventListener("click", importOldJson);
+      document.addEventListener("change", event => {
+        if (event.target.matches("input, textarea")) updateJson();
+      });
+      document.addEventListener("input", event => {
+        if (event.target.matches("input[type='text'], textarea")) updateJson();
+      });
+    }
+
+    renderQuestionList("baseQuestions", baseQuestions);
+    renderCategories();
+    renderQuestionList("uiQuestions", uiQuestions);
+    renderQuestionList("logQuestions", logQuestions);
+    restoreState();
+    bind();
+    updateJson();
+  </script>
+</body>
+</html>

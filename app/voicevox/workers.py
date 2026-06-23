@@ -1,0 +1,1 @@
+"""VOICEVOX worker pool placeholder."""

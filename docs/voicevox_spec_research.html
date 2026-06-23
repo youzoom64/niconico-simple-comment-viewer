@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VOICEVOX仕様調査 - Simple Comment Viewer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #10131a;
+      --panel: #171c25;
+      --panel-2: #202734;
+      --line: #354153;
+      --text: #eef4ff;
+      --muted: #aeb9c8;
+      --accent: #32b8ff;
+      --green: #41d17a;
+      --yellow: #ffd166;
+      --red: #ff5f6d;
+      --purple: #a991ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top left, #1b2638 0, var(--bg) 38rem);
+      color: var(--text);
+      font-family: "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+      line-height: 1.7;
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+    }
+
+    h1, h2, h3 { line-height: 1.35; }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 34px 0 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+      font-size: 22px;
+    }
+
+    h3 {
+      margin: 18px 0 8px;
+      font-size: 17px;
+    }
+
+    a { color: #8bd5ff; }
+
+    code {
+      padding: 2px 6px;
+      border: 1px solid #3a4657;
+      border-radius: 5px;
+      background: #0c1118;
+      color: #d8ecff;
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 0.95em;
+    }
+
+    .lead {
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012));
+      padding: 16px;
+    }
+
+    .card strong { color: #ffffff; }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      margin: 3px 5px 3px 0;
+      padding: 2px 9px;
+      border: 1px solid #3c4b60;
+      border-radius: 999px;
+      background: #121923;
+      color: #d7e7f8;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .tag.green { border-color: #2d8d56; color: #9ff0bf; }
+    .tag.yellow { border-color: #9c7a21; color: #ffe19b; }
+    .tag.blue { border-color: #277eaa; color: #9fe1ff; }
+    .tag.red { border-color: #9d3441; color: #ffabb3; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      counter-reset: step;
+    }
+
+    .step {
+      position: relative;
+      min-height: 128px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 14px 14px 14px 46px;
+    }
+
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #001018;
+      font-weight: 700;
+      text-align: center;
+      line-height: 24px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    th, td {
+      border-bottom: 1px solid #2f3948;
+      padding: 10px 12px;
+      vertical-align: top;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    th {
+      background: #242c39;
+      color: #ffffff;
+      white-space: nowrap;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .mini {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .notice {
+      border-left: 4px solid var(--yellow);
+      background: rgba(255, 209, 102, 0.08);
+    }
+
+    .ok {
+      border-left: 4px solid var(--green);
+      background: rgba(65, 209, 122, 0.08);
+    }
+
+    .warn {
+      border-left: 4px solid var(--red);
+      background: rgba(255, 95, 109, 0.08);
+    }
+
+    .source-list li { margin: 8px 0; }
+
+    @media (max-width: 900px) {
+      main { width: min(100vw - 24px, 1180px); }
+      .grid, .two, .flow { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>VOICEVOX仕様調査 - コメビュ実装向け</h1>
+  <p class="lead">
+    調査日: 2026-06-22 / 対象: VOICEVOX ENGINE OSS latest。
+    このメモは、Simple Comment Viewer がコメントを受け取ってからVOICEVOX音声を作るまでの内部処理を、人間が追える形にしたもの。
+  </p>
+
+  <section class="grid">
+    <div class="card ok">
+      <h3>結論</h3>
+      <p>
+        コメビュが直接使うのはVOICEVOXエディターではなく、HTTPサーバーとして動く
+        <strong>VOICEVOX Engine</strong>。基本は <code>/audio_query</code> で読み上げレシピを作り、
+        <code>/synthesis</code> でWAVを作る二段階処理。
+      </p>
+    </div>
+    <div class="card notice">
+      <h3>注意点</h3>
+      <p>
+        APIの <code>speaker</code> は名前に反して、実際には <code>/speakers</code> で取れる
+        <strong>スタイルID</strong>を入れる。キャラ名だけでは合成できない。
+      </p>
+    </div>
+    <div class="card">
+      <h3>このアプリでの扱い</h3>
+      <p>
+        VOICEVOXは「音声ファイルSE」ではなく、アカウントIDごとの
+        <strong>ボイス/読み上げ設定</strong>として扱う。スキン、フォント、ボイスの同じ演出プロファイル側に置く。
+      </p>
+    </div>
+  </section>
+
+  <h2>VOICEVOXの全体像</h2>
+  <section class="grid">
+    <div class="card">
+      <h3>エディター</h3>
+      <p>人間が触るGUI。文章を入力して声を調整する表側。コメビュは通常ここを操作しない。</p>
+      <span class="tag blue">画面</span>
+      <span class="tag">手動操作向け</span>
+    </div>
+    <div class="card">
+      <h3>エンジン</h3>
+      <p>HTTP APIを持つ音声合成サーバー。コメビュはここへリクエストを投げる。</p>
+      <span class="tag green">127.0.0.1:50021</span>
+      <span class="tag green">HTTP API</span>
+    </div>
+    <div class="card">
+      <h3>コア</h3>
+      <p>実際の推論・音声生成の中核。コメビュからは直接触らず、エンジン越しに使う。</p>
+      <span class="tag yellow">推論本体</span>
+      <span class="tag">Engineの裏側</span>
+    </div>
+  </section>
+
+  <h2>コメント1件が音声になるまで</h2>
+  <section class="flow">
+    <div class="step">
+      <h3>NDGR受信</h3>
+      <p>コメントや広告、ギフトなどを受け取る。まずraw payloadと正規化値をDBへ保存する。</p>
+    </div>
+    <div class="step">
+      <h3>種類を判定</h3>
+      <p><code>anonymous_184_chat</code>、<code>registered_user_chat</code>、<code>gift</code> などの event_kind を決める。</p>
+    </div>
+    <div class="step">
+      <h3>設定を解決</h3>
+      <p>生IDやハッシュID、event_kind から、スキン、フォント、VOICEVOXスタイル、速度設定を引く。</p>
+    </div>
+    <div class="step">
+      <h3>読み上げ文変換</h3>
+      <p>URL、<code>www</code>、<code>888</code> などを正規表現で読みやすく変換する。</p>
+    </div>
+    <div class="step">
+      <h3>audio_query</h3>
+      <p><code>POST /audio_query</code> で読み上げのレシピを作る。ここではまだWAVではない。</p>
+    </div>
+    <div class="step">
+      <h3>AudioQuery調整</h3>
+      <p><code>speedScale</code> などをキューの混雑度やユーザー設定に合わせて編集する。</p>
+    </div>
+    <div class="step">
+      <h3>synthesis</h3>
+      <p><code>POST /synthesis</code> にAudioQueryを渡し、WAVバイト列を受け取る。</p>
+    </div>
+    <div class="step">
+      <h3>再生とOBS表示</h3>
+      <p>音声再生キューへ渡しつつ、OBS用HTMLにはスキンとフォント付きコメントを流す。</p>
+    </div>
+  </section>
+
+  <h2>主要API</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>API</th>
+        <th>役割</th>
+        <th>このアプリでの使いどころ</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>GET /speakers</code></td>
+        <td>利用可能な話者とスタイルIDを取得する。</td>
+        <td>設定画面のVOICEVOX話者/スタイル選択に使う。<code>speaker</code> に渡す値はこのスタイルID。</td>
+      </tr>
+      <tr>
+        <td><code>POST /audio_query</code></td>
+        <td>テキストからAudioQueryを作る。</td>
+        <td>コメント本文を読み上げ用の「設計図」にする入口。</td>
+      </tr>
+      <tr>
+        <td><code>POST /audio_query_from_preset</code></td>
+        <td>プリセットを使ってAudioQueryを作る。</td>
+        <td>ユーザー別プリセット運用にする場合の候補。初期実装は通常の <code>/audio_query</code> でよい。</td>
+      </tr>
+      <tr>
+        <td><code>POST /synthesis</code></td>
+        <td>AudioQueryからWAV音声を生成する。</td>
+        <td>読み上げ音声生成の本体。生成WAVは再生キューへ渡す。</td>
+      </tr>
+      <tr>
+        <td><code>POST /cancellable_synthesis</code></td>
+        <td>キャンセル可能な音声合成。</td>
+        <td>大量コメント時に読み上げを捨てる設計にした場合の候補。エンジン側の対応確認が必要。</td>
+      </tr>
+      <tr>
+        <td><code>POST /accent_phrases</code></td>
+        <td>テキストからアクセント句を取得する。</td>
+        <td>読み間違い修正や読み仮名制御を細かくやる時に使う。</td>
+      </tr>
+      <tr>
+        <td><code>GET /user_dict</code> / <code>POST /user_dict_word</code></td>
+        <td>ユーザー辞書の参照・追加。</td>
+        <td>配信固有ワード、名前、ネットスラングの読みを安定させる。ただし辞書変更API無効化設定に注意。</td>
+      </tr>
+      <tr>
+        <td><code>GET /presets</code></td>
+        <td>プリセット一覧を取得する。</td>
+        <td>プリセット運用を採用する場合に設定画面へ出す。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>AudioQueryの中身</h2>
+  <section class="two">
+    <div class="card">
+      <h3>全体パラメータ</h3>
+      <p>
+        <span class="tag green">speedScale</span>
+        <span class="tag">pitchScale</span>
+        <span class="tag">intonationScale</span>
+        <span class="tag">volumeScale</span>
+        <span class="tag">prePhonemeLength</span>
+        <span class="tag">postPhonemeLength</span>
+        <span class="tag">pauseLength</span>
+        <span class="tag">pauseLengthScale</span>
+        <span class="tag">outputSamplingRate</span>
+        <span class="tag">outputStereo</span>
+        <span class="tag">kana</span>
+      </p>
+      <p class="mini">
+        ここを編集すると声の速度、音高、抑揚、音量、前後の無音、ポーズ長、出力形式を変えられる。
+      </p>
+    </div>
+    <div class="card">
+      <h3>アクセント句</h3>
+      <p>
+        <span class="tag blue">accent_phrases</span>
+        <span class="tag">moras</span>
+        <span class="tag">accent</span>
+        <span class="tag">pause_mora</span>
+        <span class="tag">is_interrogative</span>
+      </p>
+      <p class="mini">
+        文章を声にする前の細かい発音ブロック。将来的に読み間違いや疑問文の上げ調子を制御する時に触る。
+      </p>
+    </div>
+  </section>
+
+  <h2>Simple Comment Viewerでの実装方針</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>領域</th>
+        <th>持つ設定</th>
+        <th>処理イメージ</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>全体設定</td>
+        <td>VOICEVOX endpoint、timeout、worker数、デフォルト速度、キュー速度ルール。</td>
+        <td>エンジン接続先と処理能力を決める。標準は <code>http://127.0.0.1:50021</code>。</td>
+      </tr>
+      <tr>
+        <td>アカウントID設定</td>
+        <td>VOICEVOXスタイルID、速度、音量、ピッチ、スキン、フォント。</td>
+        <td>このIDがコメントした時だけ専用の見た目と声を使う。</td>
+      </tr>
+      <tr>
+        <td>event_kind設定</td>
+        <td>広告/ギフト/来場通知などの固定音声ファイル、表示変換テンプレート。</td>
+        <td>VOICEVOXとは別にSEを鳴らす。コメント本文があればSE中でも読み上げを走らせる。</td>
+      </tr>
+      <tr>
+        <td>正規表現変換</td>
+        <td>対象、pattern、replacement、有効/無効。</td>
+        <td>VOICEVOXへ渡す前にURLや草、拍手を読みやすい文字へ変換する。</td>
+      </tr>
+      <tr>
+        <td>キュー制御</td>
+        <td>待機数ごとの速度倍率、破棄ルール、最大同時生成数。</td>
+        <td>コメントが溜まるほど <code>speedScale</code> を上げる。話者IDは変えず、AudioQueryだけ調整する。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>内部処理のたとえ</h2>
+  <section class="card">
+    <p>
+      <code>/audio_query</code> は「台本を読み上げ用の楽譜に変換する工程」。
+      <code>/synthesis</code> は「その楽譜を実際に演奏してWAVにする工程」。
+      だから、速度や音量を変えたい時は、まず楽譜であるAudioQueryを書き換えてから合成する。
+    </p>
+    <p>
+      コメビュ側では、コメントを受け取った瞬間にいきなり再生しようとしない。
+      まずDBに保存し、イベント種類とアカウント設定を解決し、OBS表示キューとVOICEVOX生成キューへ分ける。
+      交通整理してから走らせる。交差点に全員を一斉突入させない。
+    </p>
+  </section>
+
+  <h2>実装時の注意</h2>
+  <section class="grid">
+    <div class="card warn">
+      <h3>CORS</h3>
+      <p>
+        ブラウザからVOICEVOX Engineへ直接投げる場合、Origin制限に当たる可能性がある。
+        OBS用HTMLから直叩きせず、アプリ側バックエンド経由にする方が安定する。
+      </p>
+    </div>
+    <div class="card warn">
+      <h3>辞書API</h3>
+      <p>
+        ユーザー辞書など変更系APIは、エンジン起動設定で無効化される場合がある。
+        辞書編集機能は失敗時の表示を必ず用意する。
+      </p>
+    </div>
+    <div class="card notice">
+      <h3>WAV形式</h3>
+      <p>
+        READMEでは生成音声のサンプリングレートが24000Hzと説明されている。
+        再生側で扱いづらければ、アプリ内で変換または対応プレーヤーを使う。
+      </p>
+    </div>
+  </section>
+
+  <h2>最小実装の順番</h2>
+  <ol>
+    <li><code>GET /speakers</code> を呼び、話者/スタイルIDを設定画面へ出す。</li>
+    <li>アカウントIDごとに style_id、speedScale、skin、font を保存できるようにする。</li>
+    <li>コメント受信時に読み上げ用テキストを正規表現で変換する。</li>
+    <li><code>POST /audio_query</code> でAudioQueryを作る。</li>
+    <li>キュー待機数に応じて <code>speedScale</code> を上書きする。</li>
+    <li><code>POST /synthesis</code> でWAVを作り、再生キューへ渡す。</li>
+    <li>OBS表示は音声生成待ちで止めず、スキン/フォント付きで先に流す。</li>
+  </ol>
+
+  <h2>参照元</h2>
+  <ul class="source-list">
+    <li><a href="https://voicevox.github.io/voicevox_engine/api/">VOICEVOX ENGINE API Document</a> - 公式OpenAPI。エンドポイント、AudioQuery、AccentPhraseを確認。</li>
+    <li><a href="https://github.com/VOICEVOX/voicevox_engine">VOICEVOX/voicevox_engine README</a> - EngineがHTTPサーバーであること、<code>/audio_query</code> と <code>/synthesis</code> のサンプル、GPU/CPU起動、CORS、UTF-8などを確認。</li>
+    <li><a href="https://github.com/VOICEVOX">VOICEVOX GitHub Organization</a> - エディター、エンジン、コアの3モジュール構成を確認。</li>
+  </ul>
+</main>
+</body>
+</html>
