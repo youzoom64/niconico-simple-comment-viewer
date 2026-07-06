@@ -19,13 +19,22 @@ html, body {
 body {
   font-family: "Yu Gothic UI", "Meiryo", sans-serif;
 }
+#background {
+  position: fixed;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: var(--background-opacity);
+  display: none;
+}
 #list-root {
   position: fixed;
   inset: 0;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 6px;
+  gap: var(--row-gap);
   padding: 10px;
   box-sizing: border-box;
   overflow: hidden;
@@ -34,13 +43,13 @@ body {
 }
 .comment-row {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: var(--icon-column) var(--name-width) 1fr;
   align-items: start;
   column-gap: 8px;
   max-width: 100%;
   padding: 5px 8px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, .56);
+  background: var(--row-background);
   border: 1px solid rgba(255, 255, 255, .16);
   box-shadow: 0 2px 7px rgba(0, 0, 0, .22);
   opacity: 0;
@@ -56,9 +65,10 @@ body {
 }
 .comment-name {
   min-width: 0;
-  max-width: 170px;
-  color: #8fd3ff;
-  font-size: 20px;
+  width: var(--name-width);
+  color: var(--name-color);
+  font-family: var(--list-font-family);
+  font-size: var(--name-font-size);
   line-height: 1.25;
   font-weight: 700;
   white-space: nowrap;
@@ -68,8 +78,9 @@ body {
 }
 .comment-text {
   min-width: 0;
-  color: #ffffff;
-  font-size: 22px;
+  color: var(--text-color);
+  font-family: var(--list-font-family);
+  font-size: var(--text-font-size);
   line-height: 1.28;
   font-weight: 700;
   overflow-wrap: anywhere;
@@ -82,15 +93,81 @@ body {
 .comment-kind {
   color: #ffd978;
 }
+.comment-icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  border-radius: 4px;
+  object-fit: cover;
+  display: var(--icon-display);
+}
 </style>
 </head>
 <body>
+<div id="background"></div>
 <div id="list-root"></div>
 <script>
+const doc = document.documentElement;
+const background = document.getElementById("background");
 const root = document.getElementById("list-root");
 let lastId = 0;
-const maxRows = 18;
+let currentSettings = {};
 const rowLifetimeMs = 90000;
+
+function clampNumber(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
+}
+
+function hexToRgb(hex) {
+  const normalized = String(hex || "").trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return [0, 0, 0];
+  return [
+    parseInt(normalized.slice(0, 2), 16),
+    parseInt(normalized.slice(2, 4), 16),
+    parseInt(normalized.slice(4, 6), 16)
+  ];
+}
+
+function applySettings(settings) {
+  currentSettings = settings || {};
+  const showIcons = Boolean(currentSettings.show_icons);
+  const iconSize = clampNumber(currentSettings.icon_size, 36, 12, 128);
+  const nameWidth = clampNumber(currentSettings.name_width, 170, 40, 600);
+  const rowGap = clampNumber(currentSettings.row_gap, 6, 0, 80);
+  const rowOpacity = clampNumber(currentSettings.row_background_opacity, 0.56, 0, 1);
+  const backgroundOpacity = clampNumber(currentSettings.background_opacity, 0.75, 0, 1);
+  const [r, g, b] = hexToRgb(currentSettings.row_background_color || "#000000");
+
+  doc.style.setProperty("--icon-size", `${iconSize}px`);
+  doc.style.setProperty("--icon-column", showIcons ? `${iconSize}px` : "0px");
+  doc.style.setProperty("--icon-display", showIcons ? "block" : "none");
+  doc.style.setProperty("--name-width", `${nameWidth}px`);
+  doc.style.setProperty("--list-font-family", currentSettings.font_family || "Yu Gothic UI");
+  doc.style.setProperty("--name-font-size", `${clampNumber(currentSettings.name_font_size, 20, 8, 96)}px`);
+  doc.style.setProperty("--text-font-size", `${clampNumber(currentSettings.text_font_size, 22, 8, 96)}px`);
+  doc.style.setProperty("--name-color", currentSettings.name_color || "#8fd3ff");
+  doc.style.setProperty("--text-color", currentSettings.text_color || "#ffffff");
+  doc.style.setProperty("--row-background", `rgba(${r}, ${g}, ${b}, ${rowOpacity})`);
+  doc.style.setProperty("--row-gap", `${rowGap}px`);
+  doc.style.setProperty("--background-opacity", String(backgroundOpacity));
+
+  if (currentSettings.background_url) {
+    background.style.backgroundImage = `url("${String(currentSettings.background_url).replaceAll('"', "%22")}")`;
+    background.style.display = "block";
+  } else {
+    background.style.backgroundImage = "";
+    background.style.display = "none";
+  }
+  trimRows();
+}
+
+function trimRows() {
+  const maxRows = Math.floor(clampNumber(currentSettings.max_rows, 18, 1, 80));
+  while (root.children.length > maxRows) {
+    root.removeChild(root.children[0]);
+  }
+}
 
 function stripNamePrefix(event) {
   const name = (event.display_name || "").trim();
@@ -104,8 +181,6 @@ function stripNamePrefix(event) {
 function displayName(event) {
   const name = (event.display_name || "").trim();
   if (name) return name;
-  const userId = String(event.user_id || "").trim();
-  if (userId) return userId;
   return event.event_kind || "comment";
 }
 
@@ -116,28 +191,49 @@ function addEvent(event) {
 
   const name = document.createElement("div");
   name.className = "comment-name";
-  if (event.event_kind && event.event_kind !== "chat" && event.event_kind !== "named_chat" && event.event_kind !== "anonymous_184_chat") {
+  if (
+    event.event_kind &&
+    event.event_kind !== "chat" &&
+    event.event_kind !== "named_chat" &&
+    event.event_kind !== "registered_user_chat" &&
+    event.event_kind !== "anonymous_184_chat"
+  ) {
     name.classList.add("comment-kind");
   }
   name.textContent = displayName(event);
+
+  const icon = document.createElement("img");
+  icon.className = "comment-icon";
+  icon.alt = "";
+  if (event.icon_url) {
+    icon.src = event.icon_url;
+  }
 
   const text = document.createElement("div");
   text.className = "comment-text";
   text.textContent = stripNamePrefix(event);
 
+  row.appendChild(icon);
   row.appendChild(name);
   row.appendChild(text);
   root.appendChild(row);
   requestAnimationFrame(() => row.classList.add("show"));
 
-  while (root.children.length > maxRows) {
-    root.removeChild(root.children[0]);
-  }
+  trimRows();
 
   setTimeout(() => {
     row.classList.add("fade");
     setTimeout(() => row.remove(), 240);
   }, rowLifetimeMs);
+}
+
+async function refreshSettings() {
+  try {
+    const response = await fetch("/list-settings", {cache: "no-store"});
+    applySettings(await response.json());
+  } catch (_error) {
+    applySettings({});
+  }
 }
 
 async function poll() {
@@ -155,6 +251,8 @@ async function poll() {
   }
 }
 
+refreshSettings();
+setInterval(refreshSettings, 1000);
 poll();
 </script>
 </body>

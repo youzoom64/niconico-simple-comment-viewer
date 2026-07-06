@@ -24,6 +24,20 @@ class AppConfig:
     voice_speed_base_scale: float = 1.0
     voice_speed_first_queue_scale: float = 1.1
     voice_speed_max_scale: float = 3.0
+    list_background_path: str = ""
+    list_background_opacity: float = 0.75
+    list_show_icons: bool = True
+    list_icon_size: int = 36
+    list_name_width: int = 170
+    list_font_family: str = "Yu Gothic UI"
+    list_name_font_size: int = 20
+    list_text_font_size: int = 22
+    list_name_color: str = "#8fd3ff"
+    list_text_color: str = "#ffffff"
+    list_row_background_color: str = "#000000"
+    list_row_background_opacity: float = 0.56
+    list_row_gap: int = 6
+    list_max_rows: int = 18
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -47,6 +61,20 @@ class AppConfig:
             "voice_speed_base_scale": float(data.get("voice_speed_base_scale") or 1.0),
             "voice_speed_first_queue_scale": float(data.get("voice_speed_first_queue_scale") or 1.1),
             "voice_speed_max_scale": float(data.get("voice_speed_max_scale") or 3.0),
+            "list_background_path": str(data.get("list_background_path") or ""),
+            "list_background_opacity": float(data.get("list_background_opacity", 0.75)),
+            "list_show_icons": bool(data.get("list_show_icons", True)),
+            "list_icon_size": int(data.get("list_icon_size") or 36),
+            "list_name_width": int(data.get("list_name_width") or 170),
+            "list_font_family": str(data.get("list_font_family") or "Yu Gothic UI"),
+            "list_name_font_size": int(data.get("list_name_font_size") or 20),
+            "list_text_font_size": int(data.get("list_text_font_size") or 22),
+            "list_name_color": str(data.get("list_name_color") or "#8fd3ff"),
+            "list_text_color": str(data.get("list_text_color") or "#ffffff"),
+            "list_row_background_color": str(data.get("list_row_background_color") or "#000000"),
+            "list_row_background_opacity": float(data.get("list_row_background_opacity", 0.56)),
+            "list_row_gap": int(data.get("list_row_gap") or 6),
+            "list_max_rows": int(data.get("list_max_rows") or 18),
         }
         extra = {key: value for key, value in data.items() if key not in known}
         return cls(**known, extra=extra)
@@ -71,5 +99,19 @@ class AppConfig:
             "voice_speed_base_scale": self.voice_speed_base_scale,
             "voice_speed_first_queue_scale": self.voice_speed_first_queue_scale,
             "voice_speed_max_scale": self.voice_speed_max_scale,
+            "list_background_path": self.list_background_path,
+            "list_background_opacity": self.list_background_opacity,
+            "list_show_icons": self.list_show_icons,
+            "list_icon_size": self.list_icon_size,
+            "list_name_width": self.list_name_width,
+            "list_font_family": self.list_font_family,
+            "list_name_font_size": self.list_name_font_size,
+            "list_text_font_size": self.list_text_font_size,
+            "list_name_color": self.list_name_color,
+            "list_text_color": self.list_text_color,
+            "list_row_background_color": self.list_row_background_color,
+            "list_row_background_opacity": self.list_row_background_opacity,
+            "list_row_gap": self.list_row_gap,
+            "list_max_rows": self.list_max_rows,
             **self.extra,
         }

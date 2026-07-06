@@ -12,7 +12,9 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from app.core.paths import APP_PATHS
 from app.domain.output.render_packet import RenderPacket
+from app.gui.user_icons import cached_user_icon_path
 from app.obs.list_overlay_html import render_comment_list_html
+from app.settings.store import JsonSettingsStore
 
 
 class OverlayEventHub:
@@ -109,6 +111,9 @@ class OverlayRequestHandler(BaseHTTPRequestHandler):
         if parsed.path == "/list":
             self._write_text(200, render_comment_list_html(), "text/html; charset=utf-8")
             return
+        if parsed.path == "/list-settings":
+            self._write_json(200, list_overlay_settings())
+            return
         if parsed.path == "/events":
             query = parse_qs(parsed.query)
             after_id = parse_int(first_value(query, "after"), 0)
@@ -168,6 +173,7 @@ def packet_to_overlay_event(event_id: int, packet: RenderPacket) -> dict[str, An
         "user_id": packet.comment.user_id,
         "display_name": display_name,
         "text": display_text,
+        "icon_url": overlay_icon_url(packet.comment.user_id),
         "skin_url": overlay_skin_url(profile.skin_path),
         "skin_width": max(1, int(profile.skin_width)),
         "skin_height": max(1, int(profile.skin_height)),
@@ -188,6 +194,41 @@ def overlay_skin_url(path: str) -> str:
     if lowered.startswith(("http://", "https://", "data:", "file:")):
         return text
     return f"/asset?path={quote(text)}"
+
+
+def overlay_icon_url(user_id: str) -> str:
+    path = cached_user_icon_path(str(user_id or ""))
+    if path is None:
+        return ""
+    return overlay_skin_url(str(path))
+
+
+def list_overlay_settings() -> dict[str, Any]:
+    config = JsonSettingsStore().load_config()
+    return {
+        "background_url": overlay_skin_url(config.list_background_path),
+        "background_opacity": clamp_float(config.list_background_opacity, 0.0, 1.0),
+        "show_icons": bool(config.list_show_icons),
+        "icon_size": clamp_int(config.list_icon_size, 12, 128),
+        "name_width": clamp_int(config.list_name_width, 40, 600),
+        "font_family": config.list_font_family or "Yu Gothic UI",
+        "name_font_size": clamp_int(config.list_name_font_size, 8, 96),
+        "text_font_size": clamp_int(config.list_text_font_size, 8, 96),
+        "name_color": config.list_name_color or "#8fd3ff",
+        "text_color": config.list_text_color or "#ffffff",
+        "row_background_color": config.list_row_background_color or "#000000",
+        "row_background_opacity": clamp_float(config.list_row_background_opacity, 0.0, 1.0),
+        "row_gap": clamp_int(config.list_row_gap, 0, 80),
+        "max_rows": clamp_int(config.list_max_rows, 1, 80),
+    }
+
+
+def clamp_int(value: int, minimum: int, maximum: int) -> int:
+    return max(minimum, min(maximum, int(value)))
+
+
+def clamp_float(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, float(value)))
 
 
 def resolve_local_asset_path(raw_path: str) -> Path | None:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QFileDialog, QCheckBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QSpinBox, QTabWidget, QVBoxLayout, QWidget
 
 from app.core.config import AppConfig
@@ -16,6 +16,7 @@ class BasicSettingsTab(QWidget):
         super().__init__()
         self.store = store
         self.config = config
+        self.loading_config = False
         self.read_aloud_input = QCheckBox("基本設定で読み上げる")
         self.voicevox_base_url_input = QLineEdit()
         self.voicevox_timeout_input = QDoubleSpinBox()
@@ -53,8 +54,36 @@ class BasicSettingsTab(QWidget):
         self.speed_max_input.setRange(0.1, 10.0)
         self.speed_max_input.setDecimals(2)
         self.speed_max_input.setSingleStep(0.1)
+        self.list_background_path_input = QLineEdit()
+        self.list_background_browse_button = QPushButton("参照")
+        self.list_background_opacity_input = QDoubleSpinBox()
+        self.list_background_opacity_input.setRange(0.0, 1.0)
+        self.list_background_opacity_input.setSingleStep(0.05)
+        self.list_show_icons_input = QCheckBox("アイコンを表示")
+        self.list_icon_size_input = QSpinBox()
+        self.list_icon_size_input.setRange(12, 128)
+        self.list_name_width_input = QSpinBox()
+        self.list_name_width_input.setRange(40, 600)
+        self.list_font_family_input = QLineEdit()
+        self.list_name_font_size_input = QSpinBox()
+        self.list_name_font_size_input.setRange(8, 96)
+        self.list_text_font_size_input = QSpinBox()
+        self.list_text_font_size_input.setRange(8, 96)
+        self.list_name_color_input = QLineEdit()
+        self.list_text_color_input = QLineEdit()
+        self.list_row_background_color_input = QLineEdit()
+        self.list_row_background_opacity_input = QDoubleSpinBox()
+        self.list_row_background_opacity_input.setRange(0.0, 1.0)
+        self.list_row_background_opacity_input.setSingleStep(0.05)
+        self.list_row_gap_input = QSpinBox()
+        self.list_row_gap_input.setRange(0, 80)
+        self.list_max_rows_input = QSpinBox()
+        self.list_max_rows_input.setRange(1, 80)
         self.save_button = QPushButton("保存")
         self.status_label = QLabel("")
+        self.list_auto_save_timer = QTimer(self)
+        self.list_auto_save_timer.setSingleShot(True)
+        self.list_auto_save_timer.setInterval(250)
         self._build_layout()
         self._connect()
         self.load_config(config)
@@ -64,6 +93,7 @@ class BasicSettingsTab(QWidget):
         tabs = QTabWidget()
         tabs.addTab(self._build_response_tab(), "基本応答")
         tabs.addTab(self._build_speed_tab(), "再生速度")
+        tabs.addTab(self._build_list_overlay_tab(), "通常リスト")
         buttons = QHBoxLayout()
         buttons.addWidget(self.save_button)
         buttons.addWidget(self.status_label, 1)
@@ -115,31 +145,102 @@ class BasicSettingsTab(QWidget):
         widget.setLayout(layout)
         return widget
 
+    def _build_list_overlay_tab(self) -> QWidget:
+        form = QFormLayout()
+        background_row = QHBoxLayout()
+        background_row.addWidget(self.list_background_path_input, 1)
+        background_row.addWidget(self.list_background_browse_button)
+        form.addRow("背景画像", background_row)
+        form.addRow("背景透明度", self.list_background_opacity_input)
+        form.addRow("", self.list_show_icons_input)
+        form.addRow("アイコンサイズ", self.list_icon_size_input)
+        form.addRow("名前幅", self.list_name_width_input)
+        form.addRow("フォント", self.list_font_family_input)
+        form.addRow("名前サイズ", self.list_name_font_size_input)
+        form.addRow("本文サイズ", self.list_text_font_size_input)
+        form.addRow("名前色", self.list_name_color_input)
+        form.addRow("本文色", self.list_text_color_input)
+        form.addRow("行背景色", self.list_row_background_color_input)
+        form.addRow("行背景透明度", self.list_row_background_opacity_input)
+        form.addRow("行間", self.list_row_gap_input)
+        form.addRow("最大行数", self.list_max_rows_input)
+        note = QLabel("このタブの変更は自動保存され、OBS の /list 表示へ約1秒以内に反映する。")
+        note.setWordWrap(True)
+        layout = QVBoxLayout()
+        layout.addLayout(form)
+        layout.addWidget(note)
+        layout.addStretch(1)
+        widget = QWidget()
+        widget.setLayout(layout)
+        return widget
+
     def _connect(self) -> None:
         self.reload_speakers_button.clicked.connect(self.reload_speakers)
         self.skin_github_button.clicked.connect(self.select_github_skin)
         self.skin_browse_button.clicked.connect(self.browse_skin)
+        self.list_background_browse_button.clicked.connect(self.browse_list_background)
+        self.list_auto_save_timer.timeout.connect(self.save_config)
+        self._connect_list_realtime_save()
         self.voice_volume_slider.valueChanged.connect(self.update_voice_volume_label)
         self.save_button.clicked.connect(self.save_config)
 
+    def _connect_list_realtime_save(self) -> None:
+        self.list_background_path_input.textChanged.connect(self.schedule_list_auto_save)
+        self.list_background_opacity_input.valueChanged.connect(self.schedule_list_auto_save)
+        self.list_show_icons_input.toggled.connect(self.schedule_list_auto_save)
+        self.list_icon_size_input.valueChanged.connect(self.schedule_list_auto_save)
+        self.list_name_width_input.valueChanged.connect(self.schedule_list_auto_save)
+        self.list_font_family_input.textChanged.connect(self.schedule_list_auto_save)
+        self.list_name_font_size_input.valueChanged.connect(self.schedule_list_auto_save)
+        self.list_text_font_size_input.valueChanged.connect(self.schedule_list_auto_save)
+        self.list_name_color_input.textChanged.connect(self.schedule_list_auto_save)
+        self.list_text_color_input.textChanged.connect(self.schedule_list_auto_save)
+        self.list_row_background_color_input.textChanged.connect(self.schedule_list_auto_save)
+        self.list_row_background_opacity_input.valueChanged.connect(self.schedule_list_auto_save)
+        self.list_row_gap_input.valueChanged.connect(self.schedule_list_auto_save)
+        self.list_max_rows_input.valueChanged.connect(self.schedule_list_auto_save)
+
+    def schedule_list_auto_save(self) -> None:
+        if self.loading_config:
+            return
+        self.list_auto_save_timer.start()
+
     def load_config(self, config: AppConfig) -> None:
+        self.loading_config = True
         self.config = config
-        self.read_aloud_input.setChecked(config.default_read_aloud_enabled)
-        self.voicevox_base_url_input.setText(config.voicevox_base_url)
-        self.voicevox_timeout_input.setValue(float(config.voicevox_timeout_seconds))
-        self.voicevox_worker_count_input.setValue(int(config.voicevox_worker_count))
-        self.voicevox_style_input.set_current_style_id(config.default_voicevox_style)
-        self.voice_volume_slider.setValue(int(round(float(config.voice_volume_scale) * 100)))
-        self.update_voice_volume_label(self.voice_volume_slider.value())
-        self.skin_path_input.setText(config.skin_path)
-        self.skin_width_input.setValue(int(config.skin_width))
-        self.skin_height_input.setValue(int(config.skin_height))
-        self.font_family_input.setText(config.font_family)
-        self.font_size_input.setValue(int(config.font_size))
-        self.font_color_input.setText(config.font_color)
-        self.speed_base_input.setValue(float(config.voice_speed_base_scale))
-        self.speed_first_queue_input.setValue(float(config.voice_speed_first_queue_scale))
-        self.speed_max_input.setValue(float(config.voice_speed_max_scale))
+        try:
+            self.read_aloud_input.setChecked(config.default_read_aloud_enabled)
+            self.voicevox_base_url_input.setText(config.voicevox_base_url)
+            self.voicevox_timeout_input.setValue(float(config.voicevox_timeout_seconds))
+            self.voicevox_worker_count_input.setValue(int(config.voicevox_worker_count))
+            self.voicevox_style_input.set_current_style_id(config.default_voicevox_style)
+            self.voice_volume_slider.setValue(int(round(float(config.voice_volume_scale) * 100)))
+            self.update_voice_volume_label(self.voice_volume_slider.value())
+            self.skin_path_input.setText(config.skin_path)
+            self.skin_width_input.setValue(int(config.skin_width))
+            self.skin_height_input.setValue(int(config.skin_height))
+            self.font_family_input.setText(config.font_family)
+            self.font_size_input.setValue(int(config.font_size))
+            self.font_color_input.setText(config.font_color)
+            self.speed_base_input.setValue(float(config.voice_speed_base_scale))
+            self.speed_first_queue_input.setValue(float(config.voice_speed_first_queue_scale))
+            self.speed_max_input.setValue(float(config.voice_speed_max_scale))
+            self.list_background_path_input.setText(config.list_background_path)
+            self.list_background_opacity_input.setValue(float(config.list_background_opacity))
+            self.list_show_icons_input.setChecked(bool(config.list_show_icons))
+            self.list_icon_size_input.setValue(int(config.list_icon_size))
+            self.list_name_width_input.setValue(int(config.list_name_width))
+            self.list_font_family_input.setText(config.list_font_family)
+            self.list_name_font_size_input.setValue(int(config.list_name_font_size))
+            self.list_text_font_size_input.setValue(int(config.list_text_font_size))
+            self.list_name_color_input.setText(config.list_name_color)
+            self.list_text_color_input.setText(config.list_text_color)
+            self.list_row_background_color_input.setText(config.list_row_background_color)
+            self.list_row_background_opacity_input.setValue(float(config.list_row_background_opacity))
+            self.list_row_gap_input.setValue(int(config.list_row_gap))
+            self.list_max_rows_input.setValue(int(config.list_max_rows))
+        finally:
+            self.loading_config = False
 
     def browse_skin(self) -> None:
         path, _filter = QFileDialog.getOpenFileName(
@@ -155,6 +256,16 @@ class BasicSettingsTab(QWidget):
         skin_url = select_github_skin(self.skin_path_input.text().strip(), self)
         if skin_url:
             self.skin_path_input.setText(skin_url)
+
+    def browse_list_background(self) -> None:
+        path, _filter = QFileDialog.getOpenFileName(
+            self,
+            "通常リスト背景を選択",
+            self.list_background_path_input.text().strip() or "",
+            "Image Files (*.png *.jpg *.jpeg *.webp *.gif);;All Files (*)",
+        )
+        if path:
+            self.list_background_path_input.setText(path)
 
     def update_voice_volume_label(self, value: int) -> None:
         self.voice_volume_label.setText(f"{int(value)}%")
@@ -193,6 +304,20 @@ class BasicSettingsTab(QWidget):
                 "voice_speed_base_scale": float(self.speed_base_input.value()),
                 "voice_speed_first_queue_scale": float(self.speed_first_queue_input.value()),
                 "voice_speed_max_scale": float(self.speed_max_input.value()),
+                "list_background_path": self.list_background_path_input.text().strip(),
+                "list_background_opacity": float(self.list_background_opacity_input.value()),
+                "list_show_icons": self.list_show_icons_input.isChecked(),
+                "list_icon_size": int(self.list_icon_size_input.value()),
+                "list_name_width": int(self.list_name_width_input.value()),
+                "list_font_family": self.list_font_family_input.text().strip() or "Yu Gothic UI",
+                "list_name_font_size": int(self.list_name_font_size_input.value()),
+                "list_text_font_size": int(self.list_text_font_size_input.value()),
+                "list_name_color": self.list_name_color_input.text().strip() or "#8fd3ff",
+                "list_text_color": self.list_text_color_input.text().strip() or "#ffffff",
+                "list_row_background_color": self.list_row_background_color_input.text().strip() or "#000000",
+                "list_row_background_opacity": float(self.list_row_background_opacity_input.value()),
+                "list_row_gap": int(self.list_row_gap_input.value()),
+                "list_max_rows": int(self.list_max_rows_input.value()),
             }
         )
         self.config = AppConfig.from_dict(data)
