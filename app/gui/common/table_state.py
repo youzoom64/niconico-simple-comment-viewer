@@ -3,7 +3,17 @@ from __future__ import annotations
 from typing import Any
 
 from PyQt6.QtCore import QByteArray, Qt
-from PyQt6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget
+from PyQt6.QtWidgets import QAbstractItemView, QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QTableWidget
+
+
+class ClippedTextDelegate(QStyledItemDelegate):
+    def paint(self, painter: Any, option: QStyleOptionViewItem, index: Any) -> None:
+        painter.save()
+        painter.setClipRect(option.rect)
+        clipped_option = QStyleOptionViewItem(option)
+        clipped_option.textElideMode = Qt.TextElideMode.ElideNone
+        super().paint(painter, clipped_option, index)
+        painter.restore()
 
 
 def configure_table_header(table: QTableWidget, widths: list[int] | None = None, default_width: int = 120) -> None:
@@ -17,6 +27,7 @@ def configure_table_header(table: QTableWidget, widths: list[int] | None = None,
     table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     table.setWordWrap(False)
     table.setTextElideMode(Qt.TextElideMode.ElideNone)
+    table.setItemDelegate(ClippedTextDelegate(table))
     if widths is not None:
         apply_column_widths(table, widths)
     else:
