@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.events.normalizer import summarize_event_message
+
 
 @dataclass(frozen=True)
 class EventKindPreset:
@@ -39,27 +41,16 @@ def format_values(event: dict[str, Any]) -> dict[str, Any]:
     payload = event.get("payload")
     if isinstance(payload, dict):
         values.update(flatten_payload(payload))
-        tag_summary = summarize_payload_tags(payload)
-        if tag_summary:
-            values.setdefault("message", tag_summary)
-            values.setdefault("content", tag_summary)
-            values.setdefault("tags_text", tag_summary)
+        event_message = summarize_event_message(str(event.get("kind") or event.get("event_kind") or self_kind(values)), payload)
+        if event_message:
+            values.setdefault("message", event_message)
+            values.setdefault("content", event_message)
+            values.setdefault("tags_text", event_message)
     return values
 
 
-def summarize_payload_tags(payload: dict[str, Any]) -> str:
-    tags = payload.get("tags")
-    if not isinstance(tags, list):
-        return ""
-    names: list[str] = []
-    for tag in tags:
-        if isinstance(tag, dict):
-            text = str(tag.get("text") or tag.get("name") or "").strip()
-        else:
-            text = str(tag or "").strip()
-        if text:
-            names.append(text)
-    return " / ".join(names)
+def self_kind(values: dict[str, Any]) -> str:
+    return str(values.get("kind") or values.get("event_kind") or "")
 
 
 def flatten_payload(payload: dict[str, Any], prefix: str = "") -> dict[str, Any]:

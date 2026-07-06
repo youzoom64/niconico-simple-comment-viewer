@@ -92,10 +92,9 @@ def normalize_standard_ndgr_comment(chunked_message: Any, kind: str) -> dict[str
 
 
 def summarize_non_chat(kind: str, payload_dict: dict[str, Any]) -> str:
-    if kind == "tag_updated":
-        tag_summary = summarize_tag_updated(payload_dict)
-        if tag_summary:
-            return tag_summary
+    event_message = summarize_event_message(kind, payload_dict)
+    if event_message:
+        return event_message
     for key in ("message", "content", "text", "label", "name", "title", "body", "item_name"):
         value = payload_dict.get(key)
         if value:
@@ -103,7 +102,15 @@ def summarize_non_chat(kind: str, payload_dict: dict[str, Any]) -> str:
     return json.dumps(payload_dict, ensure_ascii=False, separators=(",", ":"))[:240]
 
 
-def summarize_tag_updated(payload_dict: dict[str, Any]) -> str:
+def summarize_event_message(kind: str, payload_dict: dict[str, Any]) -> str:
+    if kind == "tag_updated":
+        return summarize_tags(payload_dict)
+    if kind == "gift":
+        return summarize_gift(payload_dict)
+    return find_nested_text(payload_dict, ("message", "content", "text", "label", "title", "body", "name"))
+
+
+def summarize_tags(payload_dict: dict[str, Any]) -> str:
     tags = payload_dict.get("tags")
     if not isinstance(tags, list):
         return ""
@@ -116,6 +123,37 @@ def summarize_tag_updated(payload_dict: dict[str, Any]) -> str:
         if text:
             names.append(text)
     return " / ".join(names)
+
+
+def summarize_gift(payload_dict: dict[str, Any]) -> str:
+    advertiser_name = str(payload_dict.get("advertiser_name") or payload_dict.get("name") or "").strip()
+    item_name = str(payload_dict.get("item_name") or payload_dict.get("item") or "").strip()
+    point = str(payload_dict.get("point") or payload_dict.get("gift_point") or "").strip()
+    if advertiser_name and item_name and point:
+        return f"{advertiser_name}さんが「{item_name}」を{point}ptギフトしました"
+    if advertiser_name and item_name:
+        return f"{advertiser_name}さんが「{item_name}」をギフトしました"
+    if item_name:
+        return f"{item_name}がギフトされました"
+    return find_nested_text(payload_dict, ("message", "content", "text", "label", "title", "body"))
+
+
+def find_nested_text(value: Any, keys: tuple[str, ...]) -> str:
+    if isinstance(value, dict):
+        for key in keys:
+            item = value.get(key)
+            if isinstance(item, (str, int, float)) and str(item).strip():
+                return str(item).strip()
+        for item in value.values():
+            found = find_nested_text(item, keys)
+            if found:
+                return found
+    if isinstance(value, list):
+        for item in value:
+            found = find_nested_text(item, keys)
+            if found:
+                return found
+    return ""
 
 
 def chunked_message_to_row(chunked_message: Any, source: str, page_index: int) -> dict[str, Any] | None:
@@ -163,7 +201,7 @@ def chunked_message_to_row(chunked_message: Any, source: str, page_index: int) -
         base["content"] = base["content"] or summarize_non_chat(kind, payload_dict)
     else:
         base["content"] = summarize_non_chat(kind, payload_dict)
-        if kind == "tag_updated" and base["content"]:
+        if base["content"]:
             base["message"] = base["content"]
 
     return base
