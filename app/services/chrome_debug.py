@@ -11,6 +11,7 @@ from selenium.webdriver.chrome.service import Service
 
 CHROME_USER_DATA = os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\User Data")
 CHROME_EXE = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+API_CHROME_DEBUG_USER_DATA = r"C:\project_root\app_workspaces\API\scripts\chrome_debug_data_9222"
 
 _chrome_process = None
 
@@ -122,10 +123,15 @@ def launch_chrome(
     if not os.path.exists(profile_path):
         raise FileNotFoundError(f"プロファイルが見つかりません: {profile_path}")
 
-    debug_user_data = os.path.join(os.path.dirname(__file__), f"chrome_debug_data_{port}")
+    api_debug_profile_path = os.path.join(API_CHROME_DEBUG_USER_DATA, profile_dir)
+    if os.path.exists(api_debug_profile_path):
+        debug_user_data = API_CHROME_DEBUG_USER_DATA
+        log.info(f"API側Chromeプロファイルを使用: {debug_user_data}")
+    else:
+        debug_user_data = os.path.join(os.path.dirname(__file__), f"chrome_debug_data_{port}")
     debug_profile_path = os.path.join(debug_user_data, profile_dir)
 
-    if copy_profile:
+    if copy_profile and debug_user_data != API_CHROME_DEBUG_USER_DATA:
         prefs_dst = os.path.join(debug_profile_path, "Preferences")
         if os.path.exists(prefs_dst):
             log.info(f"プロファイルコピー済み、スキップ: {profile_dir}")
