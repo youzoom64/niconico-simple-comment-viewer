@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.core.config import AppConfig
 from app.services.youtube_accept import find_first_youtube_video
+from app.services import youtube_selenium
 from app.services.youtube_selenium import wait_for_video_end, youtube_watch_url
 
 
@@ -49,6 +50,21 @@ def test_wait_for_video_end_uses_video_time() -> None:
     assert ended is True
 
 
+def test_open_youtube_video_closes_selenium_browser_after_end(monkeypatch) -> None:
+    video = find_first_youtube_video("https://youtu.be/dQw4w9WgXcQ")
+    assert video is not None
+    driver = FakeOpenDriver()
+    closed_ports: list[int] = []
+    monkeypatch.setattr(youtube_selenium, "is_debug_port_open", lambda _port: True)
+    monkeypatch.setattr(youtube_selenium, "get_driver", lambda **_kwargs: driver)
+    monkeypatch.setattr(youtube_selenium, "wait_for_video_end", lambda _driver: (3.0, True))
+    monkeypatch.setattr(youtube_selenium, "close_selenium_browser", lambda _driver, port: closed_ports.append(port))
+    result = youtube_selenium.open_youtube_video(video, wait_until_end=True)
+    assert result.ended is True
+    assert result.duration_seconds == 3.0
+    assert closed_ports == [youtube_selenium.YOUTUBE_SELENIUM_PORT]
+
+
 class FakeVideoDriver:
     def __init__(self, states: list[dict]) -> None:
         self.states = states
@@ -69,4 +85,22 @@ class FakeVideoDriver:
 
 class FakeButton:
     def click(self) -> None:
+        return None
+
+
+class FakeOpenDriver:
+    current_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    title = "test - YouTube"
+
+    def __init__(self) -> None:
+        self.window_handles = ["page"]
+        self.switch_to = self
+
+    def window(self, _handle: str) -> None:
+        return None
+
+    def set_page_load_timeout(self, _seconds: int) -> None:
+        return None
+
+    def get(self, _url: str) -> None:
         return None

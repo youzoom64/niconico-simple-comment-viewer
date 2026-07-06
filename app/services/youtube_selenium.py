@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import socket
 import time
 from dataclasses import dataclass
+from urllib.request import urlopen
 
 from app.services.chrome_debug import get_driver, get_profiles, launch_chrome
 from app.services.youtube_accept import YouTubeVideo
+import websockets
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchWindowException, TimeoutException, WebDriverException
 
@@ -64,8 +68,10 @@ def open_youtube_video(
     duration_seconds = 0.0
     ended = False
     if wait_until_end:
-        duration_seconds, ended = wait_for_video_end(driver)
-        close_current_tab(driver)
+        try:
+            duration_seconds, ended = wait_for_video_end(driver)
+        finally:
+            close_selenium_browser(driver, port)
     return YouTubeSeleniumResult(
         video=video,
         profile_dir=profile,
@@ -173,6 +179,32 @@ def request_play(driver) -> None:
         button.click()
     except WebDriverException:
         pass
+
+
+def close_selenium_browser(driver, port: int) -> None:
+    try:
+        driver.quit()
+    except WebDriverException:
+        pass
+    request_browser_close(port)
+
+
+def request_browser_close(port: int) -> None:
+    if not is_debug_port_open(port):
+        return
+    try:
+        with urlopen(f"http://127.0.0.1:{int(port)}/json/version", timeout=2) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        websocket_url = str(data.get("webSocketDebuggerUrl") or "")
+        if websocket_url:
+            asyncio.run(send_browser_close(websocket_url))
+    except Exception:
+        pass
+
+
+async def send_browser_close(websocket_url: str) -> None:
+    async with websockets.connect(websocket_url) as websocket:
+        await websocket.send(json.dumps({"id": 1, "method": "Browser.close"}))
 
 
 def close_current_tab(driver) -> None:
