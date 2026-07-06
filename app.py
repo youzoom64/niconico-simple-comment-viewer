@@ -200,7 +200,6 @@ class MainWindow(QMainWindow):
             ["アイコン", "名前", "種別", "No", "投稿時刻", "vpos", "ユーザーID", "raw", "hash", "状態", "コマンド", "本文", "source", "page"]
         )
         configure_table_header(self.table, [56, 130, 90, 70, 180, 90, 180, 140, 160, 90, 130, 420, 100, 80])
-        connect_persistent_table_state(self.table, self.ui_state_store, "comments")
         self.table.setIconSize(QSize(32, 32))
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -273,6 +272,7 @@ class MainWindow(QMainWindow):
         self.comment_input.returnPressed.connect(self.send_comment_from_input)
         self.comment_send_button.clicked.connect(self.send_comment_from_input)
         self.restore_ui_state()
+        connect_persistent_table_state(self.table, self.ui_state_store, "comments")
         try:
             overlay_url = self.overlay_server.start()
             self.append_log("INFO", f"OBSオーバーレイ起動: {overlay_url}")
