@@ -59,6 +59,7 @@ from app.ndgr.streamer import LiveCommentStreamer
 from app.obs.live_overlay import LiveOverlayServer
 from app.profiles.comment_setting_apply import apply_comment_setting_command_to_profile
 from app.services.ai_reply import AiReplyHook
+from app.services.comment_post import post_comment
 from app.services.output.output_coordinator import OutputCoordinator
 from app.services.sequence.comment_numbering import CommentNumberIssuer
 from app.services.speech_synthesis.fifo_pipeline import VoicevoxFifoPipeline
@@ -124,6 +125,23 @@ class VoicevoxGuiSignals(QObject):
     log = pyqtSignal(str, str)
 
 
+class CommentPostWorker(QObject):
+    posted = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, lv: str, text: str, is_anonymous: bool) -> None:
+        super().__init__()
+        self.lv = lv
+        self.text = text
+        self.is_anonymous = is_anonymous
+
+    def run(self) -> None:
+        try:
+            self.posted.emit(post_comment(self.lv, self.text, is_anonymous=self.is_anonymous))
+        except Exception as exc:
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -158,6 +176,14 @@ class MainWindow(QMainWindow):
         self.level_combo.addItems(["INFO", "DEBUG", "TRACE", "WARN", "ERROR"])
         self.level_combo.setCurrentText("INFO")
         self.status_label = QLabel("待機中")
+        self.comment_input = QLineEdit()
+        self.comment_input.setPlaceholderText("コメントを入力")
+        self.comment_anonymous_checkbox = QCheckBox("184で投稿")
+        self.comment_anonymous_checkbox.setChecked(True)
+        self.comment_send_button = QPushButton("送信")
+        self.comment_send_button.setEnabled(False)
+        self.comment_post_thread: QThread | None = None
+        self.comment_post_worker: CommentPostWorker | None = None
 
         top = QHBoxLayout()
         top.addWidget(QLabel("放送"))
@@ -221,6 +247,12 @@ class MainWindow(QMainWindow):
         layout.addLayout(top)
         layout.addWidget(self.status_label)
         layout.addWidget(splitter, 1)
+        comment_row = QHBoxLayout()
+        comment_row.addWidget(QLabel("コメント"))
+        comment_row.addWidget(self.comment_input, 1)
+        comment_row.addWidget(self.comment_anonymous_checkbox)
+        comment_row.addWidget(self.comment_send_button)
+        layout.addLayout(comment_row)
         root = QWidget()
         root.setLayout(layout)
         self.tabs = QTabWidget()
@@ -236,6 +268,10 @@ class MainWindow(QMainWindow):
         self.connect_button.clicked.connect(self.start_stream)
         self.fetch_button.clicked.connect(self.start_fetch)
         self.cancel_button.clicked.connect(self.cancel_fetch)
+        self.lv_input.textChanged.connect(self.update_comment_send_enabled)
+        self.comment_input.textChanged.connect(self.update_comment_send_enabled)
+        self.comment_input.returnPressed.connect(self.send_comment_from_input)
+        self.comment_send_button.clicked.connect(self.send_comment_from_input)
         self.restore_ui_state()
         try:
             overlay_url = self.overlay_server.start()
@@ -327,6 +363,7 @@ class MainWindow(QMainWindow):
         label = "接続中" if mode == "stream" else "全件取得中"
         kept = f" / 既存{len(self.rows)}件を保持" if keep_existing_rows else ""
         self.status_label.setText(f"{lv} {label}{kept}")
+        self.update_comment_send_enabled()
         self.connect_button.setEnabled(False)
         self.fetch_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
@@ -375,6 +412,52 @@ class MainWindow(QMainWindow):
             self.thread.wait(3000)
         self.thread = None
         self.worker = None
+        self.update_comment_send_enabled()
+
+    def update_comment_send_enabled(self) -> None:
+        live_text = (self.lv_input.text() or self.current_lv).strip()
+        can_send = bool(live_text) and bool(self.comment_input.text().strip()) and self.comment_post_thread is None
+        self.comment_send_button.setEnabled(can_send)
+
+    def send_comment_from_input(self) -> None:
+        if self.comment_post_thread is not None:
+            return
+        text = self.comment_input.text().strip()
+        if not text:
+            return
+        try:
+            lv = extract_lv(self.lv_input.text() or self.current_lv)
+        except ValueError as exc:
+            QMessageBox.warning(self, "入力エラー", str(exc))
+            return
+        self.comment_post_thread = QThread()
+        self.comment_post_worker = CommentPostWorker(lv, text, self.comment_anonymous_checkbox.isChecked())
+        self.comment_post_worker.moveToThread(self.comment_post_thread)
+        self.comment_post_thread.started.connect(self.comment_post_worker.run)
+        self.comment_post_worker.posted.connect(self.comment_posted)
+        self.comment_post_worker.failed.connect(self.comment_post_failed)
+        self.comment_post_worker.posted.connect(lambda _result: self.cleanup_comment_post_worker())
+        self.comment_post_worker.failed.connect(lambda _message: self.cleanup_comment_post_worker())
+        self.comment_send_button.setEnabled(False)
+        self.append_log("INFO", f"コメント送信開始: {lv} {text[:80]}")
+        self.comment_post_thread.start()
+
+    def comment_posted(self, result: dict[str, Any]) -> None:
+        self.comment_input.clear()
+        live_id = str(result.get("live_id") or self.current_lv)
+        self.append_log("INFO", f"コメント送信完了: {live_id}")
+
+    def comment_post_failed(self, message: str) -> None:
+        self.append_log("ERROR", f"コメント送信失敗: {message}")
+        QMessageBox.warning(self, "コメント送信失敗", message)
+
+    def cleanup_comment_post_worker(self) -> None:
+        if self.comment_post_thread:
+            self.comment_post_thread.quit()
+            self.comment_post_thread.wait(3000)
+        self.comment_post_thread = None
+        self.comment_post_worker = None
+        self.update_comment_send_enabled()
 
     def append_stream_row(self, row: dict[str, Any]) -> None:
         scroll_state = capture_scroll(self.table)
@@ -748,6 +831,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: Any) -> None:
         self.save_ui_state()
+        if self.comment_post_thread:
+            self.comment_post_thread.quit()
+            self.comment_post_thread.wait(3000)
         self.voicevox_pipeline.stop()
         self.overlay_server.stop()
         super().closeEvent(event)
