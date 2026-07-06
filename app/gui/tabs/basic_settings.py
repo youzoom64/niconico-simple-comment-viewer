@@ -4,6 +4,7 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QFileDialog, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QSpinBox, QTabWidget, QTextEdit, QVBoxLayout, QWidget
 
 from app.core.config import AppConfig
+from app.gui.common.combo_box import NoWheelComboBox
 from app.gui.common.github_skin_picker import select_github_skin
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
 from app.services.chrome_debug import get_profiles
@@ -108,8 +109,8 @@ class BasicSettingsTab(QWidget):
         self.tag_change_timeout_input.setRange(10.0, 180.0)
         self.tag_change_timeout_input.setSingleStep(5.0)
         self.youtube_accept_enabled_input = QCheckBox("YouTube動画受付モード")
-        self.youtube_obs_source_input = QLineEdit()
-        self.youtube_obs_source_input.setPlaceholderText("例: YouTube")
+        self.youtube_chrome_profile_input = NoWheelComboBox()
+        self.youtube_reload_profiles_button = QPushButton("再読込")
         self.save_button = QPushButton("保存")
         self.status_label = QLabel("")
         self.list_auto_save_timer = QTimer(self)
@@ -220,8 +221,11 @@ class BasicSettingsTab(QWidget):
     def _build_youtube_accept_tab(self) -> QWidget:
         form = QFormLayout()
         form.addRow("", self.youtube_accept_enabled_input)
-        form.addRow("OBSブラウザソース", self.youtube_obs_source_input)
-        note = QLabel("有効中、最初に流れたYouTube URLだけをOBSへ送る。以後は受付リセットまで無視する。")
+        profile_row = QHBoxLayout()
+        profile_row.addWidget(self.youtube_chrome_profile_input, 1)
+        profile_row.addWidget(self.youtube_reload_profiles_button)
+        form.addRow("Chromeアカウント", profile_row)
+        note = QLabel("有効中、最初に流れたYouTube URLだけをSelenium Chromeで開く。以後は受付リセットまで無視する。")
         note.setWordWrap(True)
         layout = QVBoxLayout()
         layout.addLayout(form)
@@ -272,6 +276,7 @@ class BasicSettingsTab(QWidget):
     def _connect(self) -> None:
         self.reload_speakers_button.clicked.connect(self.reload_speakers)
         self.tag_change_reload_profiles_button.clicked.connect(self.reload_chrome_profiles)
+        self.youtube_reload_profiles_button.clicked.connect(self.reload_youtube_chrome_profiles)
         self.skin_github_button.clicked.connect(self.select_github_skin)
         self.skin_browse_button.clicked.connect(self.browse_skin)
         self.list_background_browse_button.clicked.connect(self.browse_list_background)
@@ -353,7 +358,7 @@ class BasicSettingsTab(QWidget):
             self.reload_chrome_profiles(config.tag_change_chrome_profile)
             self.tag_change_timeout_input.setValue(float(config.tag_change_timeout_seconds))
             self.youtube_accept_enabled_input.setChecked(bool(config.youtube_accept_enabled))
-            self.youtube_obs_source_input.setText(config.youtube_obs_source_name)
+            self.reload_youtube_chrome_profiles(config.youtube_chrome_profile or config.tag_change_chrome_profile)
         finally:
             self.loading_config = False
 
@@ -430,8 +435,34 @@ class BasicSettingsTab(QWidget):
                 self.tag_change_chrome_profile_input.setCurrentIndex(index)
         self.status_label.setText(f"Chromeアカウント読込: {len(profiles)}件")
 
+    def reload_youtube_chrome_profiles(self, selected_profile: str = "") -> None:
+        current = selected_profile or self.current_youtube_chrome_profile()
+        self.youtube_chrome_profile_input.clear()
+        try:
+            profiles = get_profiles()
+        except Exception as exc:
+            self.status_label.setText(f"YouTube Chromeアカウント読込失敗: {type(exc).__name__}")
+            return
+        for profile in profiles:
+            profile_dir = str(profile.get("profile_dir") or "")
+            email = str(profile.get("email") or "(未ログイン)")
+            name = str(profile.get("name") or "")
+            label = f"{profile_dir} / {email}"
+            if name:
+                label = f"{label} / {name}"
+            self.youtube_chrome_profile_input.addItem(label, profile_dir)
+        if current:
+            index = self.youtube_chrome_profile_input.findData(current)
+            if index >= 0:
+                self.youtube_chrome_profile_input.setCurrentIndex(index)
+        self.status_label.setText(f"YouTube Chromeアカウント読込: {len(profiles)}件")
+
     def current_tag_change_chrome_profile(self) -> str:
         value = self.tag_change_chrome_profile_input.currentData()
+        return str(value or "")
+
+    def current_youtube_chrome_profile(self) -> str:
+        value = self.youtube_chrome_profile_input.currentData()
         return str(value or "")
 
     def save_config(self) -> None:
@@ -481,7 +512,7 @@ class BasicSettingsTab(QWidget):
                 "tag_change_timeout_seconds": float(self.tag_change_timeout_input.value()),
                 "tag_change_chrome_profile": self.current_tag_change_chrome_profile(),
                 "youtube_accept_enabled": self.youtube_accept_enabled_input.isChecked(),
-                "youtube_obs_source_name": self.youtube_obs_source_input.text().strip() or "YouTube",
+                "youtube_chrome_profile": self.current_youtube_chrome_profile(),
             }
         )
         self.config = AppConfig.from_dict(data)

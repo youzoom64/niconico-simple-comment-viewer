@@ -112,6 +112,7 @@ def launch_chrome(
     headless: bool = False,
     extra_args: list[str] | None = None,
     copy_profile: bool = True,
+    prefer_api_profile: bool = True,
 ) -> subprocess.Popen:
     global _chrome_process
     import shutil
@@ -124,7 +125,7 @@ def launch_chrome(
         raise FileNotFoundError(f"プロファイルが見つかりません: {profile_path}")
 
     api_debug_profile_path = os.path.join(API_CHROME_DEBUG_USER_DATA, profile_dir)
-    if os.path.exists(api_debug_profile_path):
+    if prefer_api_profile and os.path.exists(api_debug_profile_path):
         debug_user_data = API_CHROME_DEBUG_USER_DATA
         log.info(f"API側Chromeプロファイルを使用: {debug_user_data}")
     else:

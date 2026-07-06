@@ -61,7 +61,6 @@ from app.obs.live_overlay import LiveOverlayServer
 from app.profiles.comment_setting_apply import apply_comment_setting_command_to_profile
 from app.services.ai_reply import AiReplyHook
 from app.services.comment_post import post_comment
-from app.services.obs_websocket import ObsBrowserSourceSettings, update_browser_source
 from app.services.output.output_coordinator import OutputCoordinator
 from app.services.sequence.comment_numbering import CommentNumberIssuer
 from app.services.speech_synthesis.fifo_pipeline import VoicevoxFifoPipeline
@@ -69,6 +68,7 @@ from app.services.speech_synthesis.job_factory import build_voicevox_submission
 from app.services.speech_synthesis.voicevox_engine_adapter import build_voicevox_synthesizer
 from app.services.tag_change import TagOperation, change_live_tags, decide_tag_change
 from app.services.youtube_accept import YouTubeVideo, find_first_youtube_video
+from app.services.youtube_selenium import YouTubeSeleniumResult, open_youtube_video
 from app.settings.ui_state import UiStateStore
 from app.settings.store import JsonSettingsStore
 from app.voicevox.speed_rules import resolve_linear_speed_scale
@@ -188,15 +188,15 @@ class YoutubeAcceptWorker(QObject):
     finished = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, settings: ObsBrowserSourceSettings, video: YouTubeVideo) -> None:
+    def __init__(self, video: YouTubeVideo, chrome_profile: str) -> None:
         super().__init__()
-        self.settings = settings
         self.video = video
+        self.chrome_profile = chrome_profile
 
     def run(self) -> None:
         try:
-            asyncio.run(update_browser_source(self.settings, reload_source=True))
-            self.finished.emit(self.video)
+            result = open_youtube_video(self.video, profile_dir=self.chrome_profile, wait_until_end=True)
+            self.finished.emit(result)
         except Exception as exc:
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
@@ -616,23 +616,12 @@ class MainWindow(QMainWindow):
             return
         if self.youtube_accepted_video is not None or self.youtube_accept_thread is not None:
             return
-        source_name = self.app_config.youtube_obs_source_name.strip()
-        if not source_name:
-            self.append_log("WARN", "YouTube受付スキップ: OBSソース名なし")
-            return
         video = find_first_youtube_video(str(row.get("content") or row.get("text") or ""))
         if not video:
             return
-        settings = ObsBrowserSourceSettings(
-            websocket_url=self.app_config.obs_ws_url,
-            password=self.app_config.obs_ws_password,
-            source_name=source_name,
-            browser_url=video.embed_url,
-            width=1,
-            height=1,
-        )
+        chrome_profile = self.app_config.youtube_chrome_profile or self.app_config.tag_change_chrome_profile
         thread = QThread()
-        worker = YoutubeAcceptWorker(settings, video)
+        worker = YoutubeAcceptWorker(video, chrome_profile)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.finished.connect(self.youtube_accept_finished)
@@ -641,12 +630,15 @@ class MainWindow(QMainWindow):
         worker.failed.connect(lambda *_args: self.cleanup_youtube_accept_worker())
         self.youtube_accept_thread = thread
         self.youtube_accept_worker = worker
-        self.append_log("INFO", f"YouTube受付: {video.original_url} -> {source_name}")
+        profile_label = chrome_profile or "Default"
+        self.append_log("INFO", f"YouTube受付: {video.original_url} -> Selenium Chrome({profile_label})")
         thread.start()
 
-    def youtube_accept_finished(self, video: YouTubeVideo) -> None:
-        self.youtube_accepted_video = video
-        self.append_log("INFO", f"YouTube受付完了: {video.video_id}")
+    def youtube_accept_finished(self, result: YouTubeSeleniumResult) -> None:
+        self.youtube_accepted_video = result.video
+        duration = f"{result.duration_seconds:.1f}s" if result.duration_seconds else "duration不明"
+        state = "終了検知" if result.ended else "終了未確定"
+        self.append_log("INFO", f"YouTube受付完了: {result.video.video_id} port={result.port} {state} {duration} title={result.title or '-'}")
 
     def youtube_accept_failed(self, message: str) -> None:
         self.append_log("ERROR", f"YouTube受付失敗: {message}")
