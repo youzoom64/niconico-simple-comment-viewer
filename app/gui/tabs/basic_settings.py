@@ -89,13 +89,13 @@ class BasicSettingsTab(QWidget):
         self.ai_reply_rules_input.setFixedHeight(120)
         self.ai_reply_trigger_prefix_input = QLineEdit()
         self.ai_reply_trigger_prefix_input.setPlaceholderText("例: >AI")
-        self.ai_reply_endpoint_url_input = QLineEdit()
-        self.ai_reply_endpoint_url_input.setPlaceholderText("例: http://127.0.0.1:8787/comment-reaction")
-        self.ai_reply_api_key_input = QLineEdit()
-        self.ai_reply_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.ai_reply_timeout_input = QDoubleSpinBox()
-        self.ai_reply_timeout_input.setRange(1.0, 120.0)
-        self.ai_reply_timeout_input.setSingleStep(1.0)
+        self.ai_reply_timeout_input.setRange(10.0, 3600.0)
+        self.ai_reply_timeout_input.setSingleStep(10.0)
+        self.ai_reply_model_input = QLineEdit()
+        self.ai_reply_model_input.setPlaceholderText("空ならCodex既定")
+        self.ai_reply_effort_input = QLineEdit()
+        self.ai_reply_effort_input.setPlaceholderText("例: low / medium / high。空ならCodex既定")
         self.save_button = QPushButton("保存")
         self.status_label = QLabel("")
         self.list_auto_save_timer = QTimer(self)
@@ -168,10 +168,10 @@ class BasicSettingsTab(QWidget):
         form.addRow("", self.ai_reply_enabled_input)
         form.addRow("個別反応ルール", self.ai_reply_rules_input)
         form.addRow("AI呼び出し接頭辞", self.ai_reply_trigger_prefix_input)
-        form.addRow("送信先URL", self.ai_reply_endpoint_url_input)
-        form.addRow("APIキー", self.ai_reply_api_key_input)
-        form.addRow("timeout秒", self.ai_reply_timeout_input)
-        note = QLabel("キーワード一致、または接頭辞で始まるコメントをJSONで送る。session_idも保存して同じ相手には同じセッションを渡す。")
+        form.addRow("Codex timeout秒", self.ai_reply_timeout_input)
+        form.addRow("Codex model", self.ai_reply_model_input)
+        form.addRow("Codex effort", self.ai_reply_effort_input)
+        note = QLabel("キーワード一致、または接頭辞で始まるコメントにCodexで返信を作り、同じセッション履歴を保存して投稿する。")
         note.setWordWrap(True)
         layout = QVBoxLayout()
         layout.addLayout(form)
@@ -293,9 +293,9 @@ class BasicSettingsTab(QWidget):
             self.ai_reply_enabled_input.setChecked(bool(config.ai_reply_enabled))
             self.ai_reply_rules_input.setPlainText(config.ai_reply_rules or config.ai_reply_keywords)
             self.ai_reply_trigger_prefix_input.setText(config.ai_reply_trigger_prefix)
-            self.ai_reply_endpoint_url_input.setText(config.ai_reply_endpoint_url)
-            self.ai_reply_api_key_input.setText(config.ai_reply_api_key)
             self.ai_reply_timeout_input.setValue(float(config.ai_reply_timeout_seconds))
+            self.ai_reply_model_input.setText(config.ai_reply_model)
+            self.ai_reply_effort_input.setText(config.ai_reply_effort)
         finally:
             self.loading_config = False
 
@@ -388,9 +388,9 @@ class BasicSettingsTab(QWidget):
                 "ai_reply_keywords": self.ai_reply_rules_input.toPlainText().strip(),
                 "ai_reply_rules": self.ai_reply_rules_input.toPlainText().strip(),
                 "ai_reply_trigger_prefix": self.ai_reply_trigger_prefix_input.text().strip() or ">AI",
-                "ai_reply_endpoint_url": self.ai_reply_endpoint_url_input.text().strip(),
-                "ai_reply_api_key": self.ai_reply_api_key_input.text(),
                 "ai_reply_timeout_seconds": float(self.ai_reply_timeout_input.value()),
+                "ai_reply_model": self.ai_reply_model_input.text().strip(),
+                "ai_reply_effort": self.ai_reply_effort_input.text().strip(),
             }
         )
         self.config = AppConfig.from_dict(data)

@@ -42,9 +42,9 @@ class AppConfig:
     ai_reply_keywords: str = ""
     ai_reply_rules: str = ""
     ai_reply_trigger_prefix: str = ">AI"
-    ai_reply_endpoint_url: str = ""
-    ai_reply_api_key: str = ""
     ai_reply_timeout_seconds: float = 10.0
+    ai_reply_model: str = ""
+    ai_reply_effort: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -86,9 +86,9 @@ class AppConfig:
             "ai_reply_keywords": str(data.get("ai_reply_keywords") or ""),
             "ai_reply_rules": str(data.get("ai_reply_rules") or data.get("ai_reply_keywords") or ""),
             "ai_reply_trigger_prefix": str(data.get("ai_reply_trigger_prefix") or ">AI"),
-            "ai_reply_endpoint_url": str(data.get("ai_reply_endpoint_url") or ""),
-            "ai_reply_api_key": str(data.get("ai_reply_api_key") or ""),
-            "ai_reply_timeout_seconds": float(data.get("ai_reply_timeout_seconds") or 10.0),
+            "ai_reply_timeout_seconds": float(data.get("ai_reply_timeout_seconds") or 300.0),
+            "ai_reply_model": str(data.get("ai_reply_model") or ""),
+            "ai_reply_effort": str(data.get("ai_reply_effort") or ""),
         }
         extra = {key: value for key, value in data.items() if key not in known}
         return cls(**known, extra=extra)
@@ -131,8 +131,8 @@ class AppConfig:
             "ai_reply_keywords": self.ai_reply_keywords,
             "ai_reply_rules": self.ai_reply_rules,
             "ai_reply_trigger_prefix": self.ai_reply_trigger_prefix,
-            "ai_reply_endpoint_url": self.ai_reply_endpoint_url,
-            "ai_reply_api_key": self.ai_reply_api_key,
             "ai_reply_timeout_seconds": self.ai_reply_timeout_seconds,
+            "ai_reply_model": self.ai_reply_model,
+            "ai_reply_effort": self.ai_reply_effort,
             **self.extra,
         }

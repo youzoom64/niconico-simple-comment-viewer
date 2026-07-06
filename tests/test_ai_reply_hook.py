@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 from app.core.config import AppConfig
-from app.services.ai_reply import AiReplyDecision, build_ai_reply_payload, decide_ai_reply, parse_keywords, parse_rules
+from app.services.ai_reply import (
+    AiReplyDecision,
+    build_ai_reply_payload,
+    build_codex_reply_prompt,
+    decide_ai_reply,
+    normalize_reply_text,
+    parse_keywords,
+    parse_rules,
+)
 
 
 def test_parse_keywords_accepts_lines_and_commas() -> None:
@@ -59,3 +67,20 @@ def test_build_ai_reply_payload_contains_monitor_friendly_fields() -> None:
     assert payload["session_id"] == "s1"
     assert payload["comment"]["display_name"] == "1コメさん"
     assert payload["comment"]["content"] == "返事して"
+
+
+def test_build_codex_reply_prompt_contains_session_history() -> None:
+    prompt = build_codex_reply_prompt(
+        lv="lv123",
+        row={"content": ">AI 続き教えて"},
+        display_name="太郎",
+        decision=AiReplyDecision(True, keyword=">AI", prompt="続き教えて", session_id="s1", trigger_type="prefix"),
+        history=[{"user": "前の話", "assistant": "前の返事"}],
+    )
+    assert "前の話" in prompt
+    assert "前の返事" in prompt
+    assert "続き教えて" in prompt
+
+
+def test_normalize_reply_text_is_single_line() -> None:
+    assert normalize_reply_text('"返事\\nです"') == "返事 です"
