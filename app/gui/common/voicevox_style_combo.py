@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QComboBox
 
 from app.infra.voicevox_engine.client import VoicevoxEngineClient, VoicevoxEngineConfig
@@ -15,7 +16,15 @@ class VoicevoxStyleCombo(QComboBox):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setEditable(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setMaxVisibleItems(18)
         self.add_fallback_items()
+
+    def wheelEvent(self, event) -> None:
+        if not self.hasFocus():
+            event.ignore()
+            return
+        super().wheelEvent(event)
 
     def add_fallback_items(self) -> None:
         self.clear()

@@ -52,8 +52,7 @@ class AccountProfileDialog(QDialog):
         self.font_size_input.setRange(6, 128)
         self.font_size_input.setValue(32)
         self.font_color_input = QLineEdit("#ffffff")
-        self.voicevox_speaker_input = QLineEdit()
-        self.voicevox_speaker_input.setPlaceholderText("例: 3")
+        self.voicevox_speaker_input = VoicevoxStyleCombo()
         self.voicevox_style_input = VoicevoxStyleCombo()
         self.voicevox_reload_button = QPushButton("話者再読込")
         self.save_button = QPushButton("保存")
@@ -109,9 +108,16 @@ class AccountProfileDialog(QDialog):
                 self.app_config.voicevox_timeout_seconds,
                 self.voicevox_style_input.current_style_id(),
             )
+            self.voicevox_speaker_input.reload_from_engine(
+                self.app_config.voicevox_base_url,
+                self.app_config.voicevox_timeout_seconds,
+                self.voicevox_speaker_input.current_style_id(),
+            )
         except Exception:
             self.voicevox_style_input.add_fallback_items()
             self.voicevox_style_input.set_current_style_id(self.app_config.default_voicevox_style)
+            self.voicevox_speaker_input.add_fallback_items()
+            self.voicevox_speaker_input.set_current_style_id(self.app_config.default_voicevox_speaker)
 
     def browse_skin(self) -> None:
         path, _filter = QFileDialog.getOpenFileName(self, "スキン画像を選択", "", "Images (*.png *.jpg *.jpeg *.webp);;All Files (*)")
@@ -133,7 +139,7 @@ class AccountProfileDialog(QDialog):
         self.font_family_input.set_current_font_family(str(row_value(row, "font_family", "") or ""))
         self.font_size_input.setValue(int(row_value(row, "font_size", 32) or 32))
         self.font_color_input.setText(str(row_value(row, "font_color", "#ffffff") or "#ffffff"))
-        self.voicevox_speaker_input.setText(str(row_value(row, "voicevox_speaker", "") or ""))
+        self.voicevox_speaker_input.set_current_style_id(str(row_value(row, "voicevox_speaker", "") or ""))
         self.voicevox_style_input.set_current_style_id(str(row_value(row, "voicevox_style", "") or ""))
 
     def save_profile(self) -> None:
@@ -148,7 +154,7 @@ class AccountProfileDialog(QDialog):
             "font_family": self.font_family_input.current_font_family(),
             "font_size": self.font_size_input.value(),
             "font_color": self.font_color_input.text().strip(),
-            "voicevox_speaker": self.voicevox_speaker_input.text().strip(),
+            "voicevox_speaker": self.voicevox_speaker_input.current_style_id(),
             "voicevox_style": self.voicevox_style_input.current_style_id(),
         }
         with database_session() as conn:
