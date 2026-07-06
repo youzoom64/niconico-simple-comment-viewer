@@ -46,7 +46,7 @@ from app.events.pipeline import build_event_processing_plan
 from app.events.models import json_default
 from app.gui.common.context_menu import TableContextAction, install_table_copy_menu
 from app.gui.common.scroll_guard import capture_scroll, restore_scroll
-from app.gui.common.table_state import configure_table_header, export_table_state, restore_table_state
+from app.gui.common.table_state import configure_table_header, connect_persistent_table_state, export_table_state, restore_table_state
 from app.gui.common.window_state import export_window_state, restore_window_state
 from app.gui.dialogs.account_profile import AccountProfileDialog
 from app.gui.tabs.basic_settings import BasicSettingsTab
@@ -171,6 +171,7 @@ class MainWindow(QMainWindow):
             ["アイコン", "名前", "種別", "No", "投稿時刻", "vpos", "ユーザーID", "raw", "hash", "状態", "コマンド", "本文", "source", "page"]
         )
         configure_table_header(self.table, [56, 130, 90, 70, 180, 90, 180, 140, 160, 90, 130, 420, 100, 80])
+        connect_persistent_table_state(self.table, self.ui_state_store, "comments")
         self.table.setIconSize(QSize(32, 32))
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -655,12 +656,13 @@ class MainWindow(QMainWindow):
         restore_table_state(self.table, comments_state)
 
     def save_ui_state(self) -> None:
+        state = self.ui_state_store.load()
+        tables = state.get("tables") if isinstance(state.get("tables"), dict) else {}
+        tables["comments"] = export_table_state(self.table)
         self.ui_state_store.save(
             {
                 "window": export_window_state(self),
-                "tables": {
-                    "comments": export_table_state(self.table),
-                },
+                "tables": tables,
             }
         )
 

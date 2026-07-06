@@ -21,10 +21,11 @@ from app.db.repositories.profiles import delete_live_user_profile, list_live_use
 from app.db.schema import initialize_database
 from app.gui.common.context_menu import install_table_copy_menu
 from app.gui.common.scroll_guard import capture_scroll, restore_scroll
-from app.gui.common.table_state import configure_table_header
+from app.gui.common.table_state import configure_table_header, connect_persistent_table_state, restore_persistent_table_state
 from app.gui.common.font_combo import FontFamilyCombo
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
 from app.settings.store import JsonSettingsStore
+from app.settings.ui_state import UiStateStore
 
 
 class LiveUsersTab(QWidget):
@@ -47,6 +48,7 @@ class LiveUsersTab(QWidget):
         super().__init__()
         self.rows: list[dict[str, Any]] = []
         self.settings_store = JsonSettingsStore()
+        self.ui_state_store = UiStateStore()
         self.app_config = self.settings_store.load_config()
         self.enabled_input = QCheckBox("有効")
         self.enabled_input.setChecked(True)
@@ -76,6 +78,8 @@ class LiveUsersTab(QWidget):
         self.table = QTableWidget(0, len(self.columns))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
         configure_table_header(self.table, [60, 160, 160, 100, 260, 90, 90, 160, 80, 90, 160, 160])
+        restore_persistent_table_state(self.table, self.ui_state_store, "live_users")
+        connect_persistent_table_state(self.table, self.ui_state_store, "live_users")
         install_table_copy_menu(self.table, self.row_data_for_menu)
         self._build_layout()
         self._connect()

@@ -23,7 +23,8 @@ from app.db.schema import initialize_database
 from app.events.kinds import MESSAGE_KIND_FIELDS
 from app.gui.common.context_menu import install_table_copy_menu
 from app.gui.common.scroll_guard import capture_scroll, restore_scroll
-from app.gui.common.table_state import configure_table_header
+from app.gui.common.table_state import configure_table_header, connect_persistent_table_state, restore_persistent_table_state
+from app.settings.ui_state import UiStateStore
 
 
 DEFAULT_EVENT_KINDS = [
@@ -77,6 +78,7 @@ class EventPresetsTab(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.rows: list[dict[str, Any]] = []
+        self.ui_state_store = UiStateStore()
         self.kind_input = QComboBox()
         self.kind_input.setEditable(True)
         self.kind_input.addItems(self._event_kind_candidates())
@@ -94,6 +96,8 @@ class EventPresetsTab(QWidget):
         self.table = QTableWidget(0, len(self.columns))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
         configure_table_header(self.table, [170, 70, 320, 520])
+        restore_persistent_table_state(self.table, self.ui_state_store, "event_presets")
+        connect_persistent_table_state(self.table, self.ui_state_store, "event_presets")
         install_table_copy_menu(self.table, self.row_data_for_menu)
         self._build_layout()
         self._connect()

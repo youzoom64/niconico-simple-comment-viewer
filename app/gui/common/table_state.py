@@ -58,3 +58,24 @@ def export_table_state(table: QTableWidget) -> dict[str, Any]:
 def restore_table_state(table: QTableWidget, state: dict[str, Any]) -> None:
     apply_column_widths(table, state.get("widths"))
     apply_header_state(table, state.get("header"))
+
+
+def restore_persistent_table_state(table: QTableWidget, ui_state_store: Any, table_key: str) -> None:
+    tables = ui_state_store.section("tables")
+    state = tables.get(table_key) if isinstance(tables, dict) else {}
+    if isinstance(state, dict):
+        restore_table_state(table, state)
+
+
+def save_persistent_table_state(table: QTableWidget, ui_state_store: Any, table_key: str) -> None:
+    tables = ui_state_store.section("tables")
+    if not isinstance(tables, dict):
+        tables = {}
+    tables[table_key] = export_table_state(table)
+    ui_state_store.save_section("tables", tables)
+
+
+def connect_persistent_table_state(table: QTableWidget, ui_state_store: Any, table_key: str) -> None:
+    header = table.horizontalHeader()
+    header.sectionResized.connect(lambda *_args: save_persistent_table_state(table, ui_state_store, table_key))
+    header.sectionMoved.connect(lambda *_args: save_persistent_table_state(table, ui_state_store, table_key))
