@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QPushButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -22,9 +23,11 @@ from app.db.schema import initialize_database
 from app.events.kinds import MESSAGE_KIND_FIELDS
 from app.gui.common.context_menu import install_table_copy_menu
 from app.gui.common.file_drop_line_edit import FileDropLineEdit
+from app.gui.common.font_combo import FontFamilyCombo
 from app.gui.common.scroll_guard import capture_scroll, restore_scroll
 from app.gui.common.table_state import configure_table_header, connect_persistent_table_state, restore_persistent_table_state
-from app.profiles.event_presets import EventKindPreset, format_values
+from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
+from app.settings.store import JsonSettingsStore
 from app.settings.ui_state import UiStateStore
 
 
@@ -55,12 +58,12 @@ DEFAULT_EVENT_TEMPLATES = {
     "overflowed_chat": "{content}",
     "forwarded_chat": "{content}",
     "nicoad": "【ニコニ広告】{message}",
-    "gift": "【ギフト】{message}",
+    "gift": "【ギフト】{advertiser_name}さんが「{item_name}」を{point}ptギフトしました",
     "visitor": "【来場】{message}",
     "game_update": "【ゲーム】{message}",
     "simple_notification": "【通知】{message}",
     "simple_notification_v2": "【通知】{message}",
-    "tag_updated": "【タグ更新】{message}",
+    "tag_updated": "【タグ更新】{tags_text}",
     "moderator_updated": "【モデレーター更新】{message}",
     "ssng_updated": "【SSNG更新】{message}",
     "akashic_message_event": "【Akashic】{message}",
@@ -68,22 +71,9 @@ DEFAULT_EVENT_TEMPLATES = {
 }
 
 
-EVENT_TEMPLATE_EXAMPLES: dict[str, dict[str, Any]] = {
-    "nicoad": {"event_kind": "nicoad", "payload": {"v1": {"total_ad_point": 2100, "message": "【広告貢献1位】vanillaさんが2100ptニコニ広告しました"}}},
-    "gift": {"event_kind": "gift", "payload": {"advertiser_name": "ClaySig", "point": "30", "item_name": "応援メガホン ピンク", "contribution_rank": 5}},
-    "tag_updated": {"event_kind": "tag_updated", "payload": {"tags": [{"text": "AI"}, {"text": "プログラミング"}, {"text": "雑談"}]}},
-    "simple_notification": {"event_kind": "simple_notification", "payload": {"type": "VISITED", "message": "「レトロゲーム」が好きな1人が来場しました"}},
-    "simple_notification_v2": {"event_kind": "simple_notification_v2", "payload": {"type": "VISITED", "message": "「レトロゲーム」が好きな1人が来場しました"}},
-    "visitor": {"event_kind": "visitor", "payload": {"name": "初見さん", "message": "初見さんが来場しました"}},
-    "game_update": {"event_kind": "game_update", "payload": {"title": "ゲーム開始", "message": "ゲームが開始されました"}},
-    "moderator_updated": {"event_kind": "moderator_updated", "payload": {"message": "モデレーター情報が更新されました"}},
-    "ssng_updated": {"event_kind": "ssng_updated", "payload": {"message": "SSNG設定が更新されました"}},
-    "akashic_message_event": {"event_kind": "akashic_message_event", "payload": {"message": "Akashicイベントが発生しました"}},
-    "operator_chat": {"event_kind": "operator_chat", "content": "運営コメントです"},
-    "owner_chat": {"event_kind": "owner_chat", "content": "配信者コメントです"},
-    "chat": {"event_kind": "chat", "content": "通常コメントです"},
-    "anonymous_184_chat": {"event_kind": "anonymous_184_chat", "content": "184コメントです"},
-    "named_chat": {"event_kind": "named_chat", "name": "太郎", "content": "名前付きコメントです"},
+LEGACY_EVENT_TEMPLATES = {
+    "gift": "【ギフト】{message}",
+    "tag_updated": "【タグ更新】{message}",
 }
 
 
@@ -93,12 +83,21 @@ class EventPresetsTab(QWidget):
         ("enabled", "有効"),
         ("sound_path", "音声ファイル"),
         ("display_template", "表示テンプレート"),
+        ("skin_path", "スキン"),
+        ("skin_width", "スキン幅"),
+        ("skin_height", "スキン高"),
+        ("font_family", "フォント"),
+        ("font_size", "サイズ"),
+        ("font_color", "色"),
+        ("voicevox_style", "VOICEVOX"),
     ]
 
     def __init__(self) -> None:
         super().__init__()
         self.rows: list[dict[str, Any]] = []
+        self.settings_store = JsonSettingsStore()
         self.ui_state_store = UiStateStore()
+        self.app_config = self.settings_store.load_config()
         self.kind_input = QComboBox()
         self.kind_input.setEditable(True)
         self.kind_input.addItems(self._event_kind_candidates())
@@ -110,26 +109,37 @@ class EventPresetsTab(QWidget):
         self.template_input = QTextEdit()
         self.template_input.setPlaceholderText("例: 【広告】{message} / 【ギフト】{advertiser_name}さん {item_name} {point}pt")
         self.template_input.setFixedHeight(88)
-        self.template_keys_view = QTextEdit()
-        self.template_keys_view.setReadOnly(True)
-        self.template_keys_view.setFixedHeight(64)
-        self.template_preview_view = QTextEdit()
-        self.template_preview_view.setReadOnly(True)
-        self.template_preview_view.setFixedHeight(54)
+        self.skin_path_input = FileDropLineEdit()
+        self.skin_path_input.setPlaceholderText("スキン画像をドロップ、または参照")
+        self.skin_browse_button = QPushButton("参照")
+        self.skin_width_input = QSpinBox()
+        self.skin_width_input.setRange(0, 4096)
+        self.skin_width_input.setSpecialValueText("基本")
+        self.skin_height_input = QSpinBox()
+        self.skin_height_input.setRange(0, 512)
+        self.skin_height_input.setSpecialValueText("基本")
+        self.font_family_input = FontFamilyCombo()
+        self.font_size_input = QSpinBox()
+        self.font_size_input.setRange(0, 128)
+        self.font_size_input.setSpecialValueText("基本")
+        self.font_color_input = FileDropLineEdit()
+        self.font_color_input.setPlaceholderText("例: #ffffff / 空なら基本")
+        self.voicevox_style_input = VoicevoxStyleCombo()
+        self.voicevox_reload_button = QPushButton("話者再読込")
         self.save_button = QPushButton("保存")
         self.delete_button = QPushButton("削除")
         self.seed_all_button = QPushButton("全イベント初期設定")
         self.reload_button = QPushButton("再読込")
         self.table = QTableWidget(0, len(self.columns))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
-        configure_table_header(self.table, [170, 70, 320, 520])
+        configure_table_header(self.table, [170, 70, 260, 420, 240, 80, 80, 150, 70, 90, 170])
         restore_persistent_table_state(self.table, self.ui_state_store, "event_presets")
         connect_persistent_table_state(self.table, self.ui_state_store, "event_presets")
         install_table_copy_menu(self.table, self.row_data_for_menu)
         self._build_layout()
         self._connect()
+        self.reload_voicevox_styles()
         self.reload()
-        self.update_template_help()
 
     def _event_kind_candidates(self) -> list[str]:
         seen: set[str] = set()
@@ -149,8 +159,19 @@ class EventPresetsTab(QWidget):
         sound_row.addWidget(self.sound_browse_button)
         form.addRow("音声ファイル", sound_row)
         form.addRow("表示テンプレート", self.template_input)
-        form.addRow("差し込み項目", self.template_keys_view)
-        form.addRow("表示例", self.template_preview_view)
+        skin_row = QHBoxLayout()
+        skin_row.addWidget(self.skin_path_input, 1)
+        skin_row.addWidget(self.skin_browse_button)
+        form.addRow("スキン", skin_row)
+        form.addRow("スキン幅", self.skin_width_input)
+        form.addRow("スキン高さ", self.skin_height_input)
+        form.addRow("フォント", self.font_family_input)
+        form.addRow("フォントサイズ", self.font_size_input)
+        form.addRow("フォント色", self.font_color_input)
+        voice_row = QHBoxLayout()
+        voice_row.addWidget(self.voicevox_style_input, 1)
+        voice_row.addWidget(self.voicevox_reload_button)
+        form.addRow("VOICEVOX話者", voice_row)
         buttons = QHBoxLayout()
         buttons.addWidget(self.save_button)
         buttons.addWidget(self.delete_button)
@@ -169,14 +190,31 @@ class EventPresetsTab(QWidget):
         self.seed_all_button.clicked.connect(self.seed_all_presets)
         self.reload_button.clicked.connect(self.reload)
         self.sound_browse_button.clicked.connect(self.browse_sound)
+        self.skin_browse_button.clicked.connect(self.browse_skin)
+        self.voicevox_reload_button.clicked.connect(self.reload_voicevox_styles)
         self.table.cellDoubleClicked.connect(lambda row, _column: self.load_row_to_form(row))
-        self.kind_input.currentTextChanged.connect(lambda _text: self.update_template_help())
-        self.template_input.textChanged.connect(self.update_template_help)
 
     def browse_sound(self) -> None:
         path, _filter = QFileDialog.getOpenFileName(self, "音声ファイルを選択", "", "Audio (*.wav *.mp3 *.ogg);;All Files (*)")
         if path:
             self.sound_path_input.setText(path)
+
+    def browse_skin(self) -> None:
+        path, _filter = QFileDialog.getOpenFileName(self, "スキン画像を選択", "", "Images (*.png *.jpg *.jpeg *.webp);;All Files (*)")
+        if path:
+            self.skin_path_input.setText(path)
+
+    def reload_voicevox_styles(self) -> None:
+        self.app_config = self.settings_store.load_config()
+        try:
+            self.voicevox_style_input.reload_from_engine(
+                self.app_config.voicevox_base_url,
+                self.app_config.voicevox_timeout_seconds,
+                self.voicevox_style_input.current_style_id(),
+            )
+        except Exception:
+            self.voicevox_style_input.add_fallback_items()
+            self.voicevox_style_input.set_current_style_id("")
 
     def save_preset(self) -> None:
         preset = {
@@ -184,6 +222,14 @@ class EventPresetsTab(QWidget):
             "enabled": self.enabled_input.isChecked(),
             "sound_path": self.sound_path_input.text().strip(),
             "display_template": self.template_input.toPlainText().strip(),
+            "skin_path": self.skin_path_input.text().strip(),
+            "skin_width": self.skin_width_input.value(),
+            "skin_height": self.skin_height_input.value(),
+            "font_family": self.font_family_input.current_font_family(),
+            "font_size": self.font_size_input.value(),
+            "font_color": self.font_color_input.text().strip(),
+            "voicevox_speaker": "",
+            "voicevox_style": self.voicevox_style_input.current_style_id(),
         }
         if not preset["event_kind"]:
             return
@@ -212,6 +258,14 @@ class EventPresetsTab(QWidget):
                         "enabled": True,
                         "sound_path": "",
                         "display_template": DEFAULT_EVENT_TEMPLATES.get(event_kind, "{content}"),
+                        "skin_path": "",
+                        "skin_width": 0,
+                        "skin_height": 0,
+                        "font_family": "",
+                        "font_size": 0,
+                        "font_color": "",
+                        "voicevox_speaker": "",
+                        "voicevox_style": "",
                     },
                 )
         self.reload()
@@ -220,6 +274,7 @@ class EventPresetsTab(QWidget):
         scroll_state = capture_scroll(self.table)
         with database_session() as conn:
             initialize_database(conn)
+            self.migrate_legacy_templates(conn)
             self.rows = [dict(row) for row in list_event_kind_presets(conn)]
         self.table.setRowCount(len(self.rows))
         for row_index, row in enumerate(self.rows):
@@ -263,24 +318,29 @@ class EventPresetsTab(QWidget):
         self.enabled_input.setChecked(bool(row.get("enabled")))
         self.sound_path_input.setText(str(row.get("sound_path") or ""))
         self.template_input.setPlainText(str(row.get("display_template") or ""))
-        self.update_template_help()
-
-    def update_template_help(self) -> None:
-        event_kind = self.kind_input.currentText().strip()
-        example = self.example_event_for_kind(event_kind)
-        values = format_values(example)
-        keys = sorted(key for key, value in values.items() if value not in (None, ""))
-        self.template_keys_view.setPlainText(", ".join(f"{{{key}}}" for key in keys) or "差し込み項目なし")
-        template = self.template_input.toPlainText().strip() or DEFAULT_EVENT_TEMPLATES.get(event_kind, "{content}")
-        preset = EventKindPreset(event_kind=event_kind, enabled=True, display_template=template)
-        self.template_preview_view.setPlainText(preset.render_display_text(example))
+        self.skin_path_input.setText(str(row.get("skin_path") or ""))
+        self.skin_width_input.setValue(int(row.get("skin_width") or 0))
+        self.skin_height_input.setValue(int(row.get("skin_height") or 0))
+        self.font_family_input.set_current_font_family(str(row.get("font_family") or ""))
+        self.font_size_input.setValue(int(row.get("font_size") or 0))
+        self.font_color_input.setText(str(row.get("font_color") or ""))
+        self.voicevox_style_input.set_current_style_id(str(row.get("voicevox_style") or ""))
 
     @staticmethod
-    def example_event_for_kind(event_kind: str) -> dict[str, Any]:
-        example = EVENT_TEMPLATE_EXAMPLES.get(event_kind)
-        if example:
-            return dict(example)
-        return {"event_kind": event_kind, "content": "サンプル本文", "payload": {"message": "サンプルメッセージ"}}
+    def migrate_legacy_templates(conn) -> None:
+        for event_kind, old_template in LEGACY_EVENT_TEMPLATES.items():
+            new_template = DEFAULT_EVENT_TEMPLATES.get(event_kind)
+            if not new_template:
+                continue
+            row = conn.execute(
+                "SELECT * FROM event_kind_presets WHERE event_kind = ? AND display_template = ?",
+                (event_kind, old_template),
+            ).fetchone()
+            if row is None:
+                continue
+            preset = dict(row)
+            preset["display_template"] = new_template
+            upsert_event_kind_preset(conn, preset)
 
     def row_data_for_menu(self, row_index: int) -> dict[str, Any] | None:
         if row_index < 0 or row_index >= len(self.rows):

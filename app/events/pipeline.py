@@ -59,13 +59,16 @@ def build_event_processing_plan(
         font_size_px=default_font_size,
         font_color=default_font_color,
     )
-    skin = merge_user_skin(default_skin, user_profile)
+    event_skin = merge_event_skin(default_skin, event_preset)
+    skin = merge_user_skin(event_skin, user_profile)
     configured_speaker = user_profile.voicevox_speaker if user_profile and user_profile.enabled else ""
     configured_style = user_profile.voicevox_style if user_profile and user_profile.enabled else ""
+    event_speaker = event_preset.voicevox_speaker if event_preset and event_preset.enabled else ""
+    event_style = event_preset.voicevox_style if event_preset and event_preset.enabled else ""
     fallback_speaker = default_voicevox_speaker if default_read_aloud_enabled else ""
     fallback_style = default_voicevox_style if default_read_aloud_enabled else ""
-    voicevox_speaker = configured_speaker or fallback_speaker
-    voicevox_style = configured_style or fallback_style
+    voicevox_speaker = configured_speaker or event_speaker or fallback_speaker
+    voicevox_style = configured_style or event_style or fallback_style
     obs_comment = ObsComment(
         text=obs_text,
         lane=lane,
@@ -100,6 +103,19 @@ def merge_user_skin(default_skin: SkinStyle, user_profile: LiveUserProfile | Non
         font_family=user_profile.font_family or default_skin.font_family,
         font_size_px=user_profile.font_size or default_skin.font_size_px,
         font_color=user_profile.font_color or default_skin.font_color,
+    )
+
+
+def merge_event_skin(default_skin: SkinStyle, event_preset: EventKindPreset | None) -> SkinStyle:
+    if not event_preset or not event_preset.enabled:
+        return default_skin
+    return SkinStyle(
+        skin_path=event_preset.skin_path or default_skin.skin_path,
+        width_px=event_preset.skin_width or default_skin.width_px,
+        height_px=event_preset.skin_height or default_skin.height_px,
+        font_family=event_preset.font_family or default_skin.font_family,
+        font_size_px=event_preset.font_size or default_skin.font_size_px,
+        font_color=event_preset.font_color or default_skin.font_color,
     )
 
 

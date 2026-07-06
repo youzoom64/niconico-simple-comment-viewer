@@ -12,6 +12,14 @@ class EventKindPreset:
     enabled: bool = True
     sound_path: str = ""
     display_template: str = ""
+    skin_path: str = ""
+    skin_width: int = 0
+    skin_height: int = 0
+    font_family: str = ""
+    font_size: int = 0
+    font_color: str = ""
+    voicevox_speaker: str = ""
+    voicevox_style: str = ""
 
     @classmethod
     def from_row(cls, row: Any | None) -> "EventKindPreset | None":
@@ -22,6 +30,14 @@ class EventKindPreset:
             enabled=bool(row["enabled"]),
             sound_path=str(row["sound_path"] or ""),
             display_template=str(row["display_template"] or ""),
+            skin_path=str(row["skin_path"] or ""),
+            skin_width=int(row["skin_width"] or 0),
+            skin_height=int(row["skin_height"] or 0),
+            font_family=str(row["font_family"] or ""),
+            font_size=int(row["font_size"] or 0),
+            font_color=str(row["font_color"] or ""),
+            voicevox_speaker=str(row["voicevox_speaker"] or ""),
+            voicevox_style=str(row["voicevox_style"] or ""),
         )
 
     def render_display_text(self, event: dict[str, Any]) -> str:

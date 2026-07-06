@@ -7,12 +7,24 @@ from typing import Any
 def upsert_event_kind_preset(conn: sqlite3.Connection, preset: dict[str, Any]) -> None:
     conn.execute(
         """
-        INSERT INTO event_kind_presets(event_kind, enabled, sound_path, display_template)
-        VALUES(?, ?, ?, ?)
+        INSERT INTO event_kind_presets(
+            event_kind, enabled, sound_path, display_template,
+            skin_path, skin_width, skin_height, font_family, font_size, font_color,
+            voicevox_speaker, voicevox_style
+        )
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(event_kind) DO UPDATE SET
             enabled = excluded.enabled,
             sound_path = excluded.sound_path,
             display_template = excluded.display_template,
+            skin_path = excluded.skin_path,
+            skin_width = excluded.skin_width,
+            skin_height = excluded.skin_height,
+            font_family = excluded.font_family,
+            font_size = excluded.font_size,
+            font_color = excluded.font_color,
+            voicevox_speaker = excluded.voicevox_speaker,
+            voicevox_style = excluded.voicevox_style,
             updated_at = CURRENT_TIMESTAMP
         """,
         (
@@ -20,6 +32,14 @@ def upsert_event_kind_preset(conn: sqlite3.Connection, preset: dict[str, Any]) -
             1 if preset.get("enabled", True) else 0,
             str(preset.get("sound_path") or ""),
             str(preset.get("display_template") or ""),
+            str(preset.get("skin_path") or ""),
+            int(preset.get("skin_width") or 0) or None,
+            int(preset.get("skin_height") or 0) or None,
+            str(preset.get("font_family") or ""),
+            int(preset.get("font_size") or 0) or None,
+            str(preset.get("font_color") or ""),
+            str(preset.get("voicevox_speaker") or ""),
+            str(preset.get("voicevox_style") or ""),
         ),
     )
 

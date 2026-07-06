@@ -105,6 +105,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
         (str(SCHEMA_VERSION),),
     )
     ensure_live_user_profile_columns(conn)
+    ensure_event_kind_preset_columns(conn)
 
 
 def ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
@@ -117,6 +118,17 @@ def ensure_live_user_profile_columns(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "live_user_profiles", "skin_width", "INTEGER")
     ensure_column(conn, "live_user_profiles", "skin_height", "INTEGER")
     ensure_column(conn, "live_user_profiles", "display_name_locked", "INTEGER NOT NULL DEFAULT 0")
+
+
+def ensure_event_kind_preset_columns(conn: sqlite3.Connection) -> None:
+    ensure_column(conn, "event_kind_presets", "skin_path", "TEXT")
+    ensure_column(conn, "event_kind_presets", "skin_width", "INTEGER")
+    ensure_column(conn, "event_kind_presets", "skin_height", "INTEGER")
+    ensure_column(conn, "event_kind_presets", "font_family", "TEXT")
+    ensure_column(conn, "event_kind_presets", "font_size", "INTEGER")
+    ensure_column(conn, "event_kind_presets", "font_color", "TEXT")
+    ensure_column(conn, "event_kind_presets", "voicevox_speaker", "TEXT")
+    ensure_column(conn, "event_kind_presets", "voicevox_style", "TEXT")
 
 
 def seed_default_rules(conn: sqlite3.Connection) -> None:
