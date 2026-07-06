@@ -64,3 +64,12 @@ class VoicevoxStyleCombo(QComboBox):
             self.setEditText(target)
         else:
             self.setCurrentIndex(0)
+
+    def label_for_style_id(self, style_id: str) -> str:
+        target = str(style_id or "").strip()
+        if not target:
+            return ""
+        for index in range(self.count()):
+            if str(self.itemData(index) or "") == target:
+                return self.itemText(index)
+        return target

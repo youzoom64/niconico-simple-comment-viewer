@@ -187,6 +187,10 @@ class LiveUsersTab(QWidget):
                 value = "ON" if key in {"enabled", "display_name_locked"} and row.get(key) else row.get(key, "")
                 if key in {"enabled", "display_name_locked"} and not row.get(key):
                     value = "OFF"
+                if key == "voicevox_speaker":
+                    value = self.voicevox_speaker_input.label_for_style_id(str(row.get(key) or ""))
+                if key == "voicevox_style":
+                    value = self.voicevox_style_input.label_for_style_id(str(row.get(key) or ""))
                 self.table.setItem(row_index, column_index, QTableWidgetItem(str(value or "")))
         restore_scroll(self.table, scroll_state, keep_bottom=False)
 
