@@ -64,6 +64,7 @@ class AppConfig:
     obs_list_url: str = "http://127.0.0.1:8792/list"
     obs_list_width: int = 1920
     obs_list_height: int = 1080
+    obs_browser_sources: list[dict[str, Any]] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -127,6 +128,7 @@ class AppConfig:
             "obs_list_url": str(data.get("obs_list_url") or "http://127.0.0.1:8792/list"),
             "obs_list_width": int(data.get("obs_list_width") or 1920),
             "obs_list_height": int(data.get("obs_list_height") or 1080),
+            "obs_browser_sources": normalize_obs_browser_sources(data),
         }
         extra = {key: value for key, value in data.items() if key not in known}
         return cls(**known, extra=extra)
@@ -191,5 +193,40 @@ class AppConfig:
             "obs_list_url": self.obs_list_url,
             "obs_list_width": self.obs_list_width,
             "obs_list_height": self.obs_list_height,
+            "obs_browser_sources": self.obs_browser_sources,
             **self.extra,
         }
+
+
+def normalize_obs_browser_sources(data: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = data.get("obs_browser_sources")
+    if isinstance(raw, list):
+        rows = [normalize_obs_browser_source(row) for row in raw if isinstance(row, dict)]
+        if rows:
+            return rows
+    return [
+        {
+            "label": "右から左スキン",
+            "source": str(data.get("obs_skin_source_name") or "skin"),
+            "url": str(data.get("obs_skin_url") or "http://127.0.0.1:8792/"),
+            "width": int(data.get("obs_skin_width") or 1920),
+            "height": int(data.get("obs_skin_height") or 1080),
+        },
+        {
+            "label": "通常リスト",
+            "source": str(data.get("obs_list_source_name") or "リスト"),
+            "url": str(data.get("obs_list_url") or "http://127.0.0.1:8792/list"),
+            "width": int(data.get("obs_list_width") or 1920),
+            "height": int(data.get("obs_list_height") or 1080),
+        },
+    ]
+
+
+def normalize_obs_browser_source(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "label": str(row.get("label") or ""),
+        "source": str(row.get("source") or ""),
+        "url": str(row.get("url") or "http://127.0.0.1:8792/"),
+        "width": int(row.get("width") or 1920),
+        "height": int(row.get("height") or 1080),
+    }

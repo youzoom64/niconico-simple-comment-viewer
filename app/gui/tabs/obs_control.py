@@ -4,11 +4,18 @@ import asyncio
 from typing import Any, Callable
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
-from PyQt6.QtWidgets import QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from app.core.config import AppConfig
-from app.services.obs_websocket import ObsBrowserSourceSettings, list_obs_inputs, test_obs_connection, update_browser_source
+from app.gui.common.combo_box import NoWheelComboBox
+from app.services.obs_websocket import ObsBrowserSourceSettings, list_obs_inputs, refresh_browser_source, test_obs_connection, update_browser_source
 from app.settings.store import JsonSettingsStore
+
+
+DEFAULT_OBS_ROWS = [
+    {"label": "右から左スキン", "source": "skin", "url": "http://127.0.0.1:8792/"},
+    {"label": "通常リスト", "source": "リスト", "url": "http://127.0.0.1:8792/list"},
+]
 
 
 class ObsTaskWorker(QObject):
@@ -26,42 +33,76 @@ class ObsTaskWorker(QObject):
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
 
-class SourceControls:
-    def __init__(self, source_name: str, url: str, width: int, height: int) -> None:
-        self.source = QComboBox()
-        self.source.setEditable(True)
-        self.url = QLineEdit(url)
-        self.width = QSpinBox()
-        self.width.setRange(1, 7680)
-        self.width.setValue(width)
-        self.height = QSpinBox()
-        self.height.setRange(1, 4320)
-        self.height.setValue(height)
-        self.apply = QPushButton("反映")
-        self.reload = QPushButton("再読み込み")
-        self.set_source(source_name)
+class ObsSourceRow(QWidget):
+    remove_requested = pyqtSignal(object)
+    apply_requested = pyqtSignal(object)
+
+    def __init__(self, data: dict[str, Any]) -> None:
+        super().__init__()
+        self.label_input = QLineEdit(str(data.get("label") or ""))
+        self.source_input = NoWheelComboBox()
+        self.source_input.setEditable(True)
+        self.url_input = QLineEdit(str(data.get("url") or "http://127.0.0.1:8792/"))
+        self.apply_button = QPushButton("反映")
+        self.reload_button = QPushButton("キャッシュ更新")
+        self.remove_button = QPushButton("削除")
+        self.set_source(str(data.get("source") or ""))
+        self._build_layout()
+        self.apply_button.clicked.connect(lambda: self.apply_requested.emit(("apply", self)))
+        self.reload_button.clicked.connect(lambda: self.apply_requested.emit(("refresh", self)))
+        self.remove_button.clicked.connect(lambda: self.remove_requested.emit(self))
+
+    def _build_layout(self) -> None:
+        layout = QHBoxLayout()
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.addWidget(QLabel("名前"))
+        layout.addWidget(self.label_input, 1)
+        layout.addWidget(QLabel("ソース"))
+        layout.addWidget(self.source_input, 2)
+        layout.addWidget(QLabel("URL"))
+        layout.addWidget(self.url_input, 3)
+        layout.addWidget(self.apply_button)
+        layout.addWidget(self.reload_button)
+        layout.addWidget(self.remove_button)
+        self.setLayout(layout)
+
+    def set_sources(self, sources: list[str]) -> None:
+        current = self.source_text()
+        self.source_input.clear()
+        for source in sources:
+            self.source_input.addItem(source, source)
+        self.set_source(current)
 
     def set_source(self, value: str) -> None:
         value = value.strip()
-        index = self.source.findText(value)
+        index = self.source_input.findText(value)
         if value and index < 0:
-            self.source.addItem(value, value)
-            index = self.source.findText(value)
-        self.source.setCurrentIndex(max(0, index))
+            self.source_input.addItem(value, value)
+            index = self.source_input.findText(value)
+        if index >= 0:
+            self.source_input.setCurrentIndex(index)
         if value:
-            self.source.setEditText(value)
+            self.source_input.setEditText(value)
 
     def source_text(self) -> str:
-        return self.source.currentText().strip()
+        return self.source_input.currentText().strip()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "label": self.label_input.text().strip(),
+            "source": self.source_text(),
+            "url": self.url_input.text().strip() or "http://127.0.0.1:8792/",
+        }
 
     def settings(self, websocket_url: str, password: str) -> ObsBrowserSourceSettings:
+        row = self.to_dict()
         return ObsBrowserSourceSettings(
             websocket_url=websocket_url,
             password=password,
-            source_name=self.source_text(),
-            browser_url=self.url.text().strip(),
-            width=int(self.width.value()),
-            height=int(self.height.value()),
+            source_name=row["source"],
+            browser_url=row["url"],
+            width=1,
+            height=1,
         )
 
 
@@ -72,16 +113,22 @@ class ObsControlTab(QWidget):
         super().__init__()
         self.store = store
         self.config = config
+        self.rows: list[ObsSourceRow] = []
+        self.obs_sources: list[str] = []
         self.threads: list[QThread] = []
         self.workers: list[ObsTaskWorker] = []
         self.ws_url_input = QLineEdit()
         self.password_input = QLineEdit()
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.skin_controls = SourceControls(config.obs_skin_source_name, config.obs_skin_url, config.obs_skin_width, config.obs_skin_height)
-        self.list_controls = SourceControls(config.obs_list_source_name, config.obs_list_url, config.obs_list_width, config.obs_list_height)
+        self.rows_widget = QWidget()
+        self.rows_layout = QVBoxLayout()
+        self.rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.rows_widget.setLayout(self.rows_layout)
         self.save_button = QPushButton("保存")
         self.test_button = QPushButton("接続テスト")
         self.reload_sources_button = QPushButton("ソース一覧")
+        self.add_button = QPushButton("追加")
+        self.update_all_button = QPushButton("一括更新")
         self.status_label = QLabel("")
         self._build_layout()
         self._connect()
@@ -89,74 +136,73 @@ class ObsControlTab(QWidget):
         self.load_sources_sync()
 
     def _build_layout(self) -> None:
-        form = QFormLayout()
-        form.addRow("OBS WebSocket", self.ws_url_input)
-        form.addRow("パスワード", self.password_input)
-        buttons = QHBoxLayout()
-        buttons.addWidget(self.save_button)
-        buttons.addWidget(self.test_button)
-        buttons.addWidget(self.reload_sources_button)
+        top = QHBoxLayout()
+        top.addWidget(QLabel("OBS WebSocket"))
+        top.addWidget(self.ws_url_input, 2)
+        top.addWidget(QLabel("パスワード"))
+        top.addWidget(self.password_input, 1)
+        top.addWidget(self.test_button)
+        top.addWidget(self.reload_sources_button)
+        controls = QHBoxLayout()
+        controls.addWidget(self.save_button)
+        controls.addWidget(self.add_button)
+        controls.addWidget(self.update_all_button)
+        controls.addStretch(1)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.StyledPanel)
+        scroll.setWidget(self.rows_widget)
         layout = QVBoxLayout()
-        layout.addLayout(form)
-        layout.addWidget(self.build_source_group("右から左スキン", self.skin_controls))
-        layout.addWidget(self.build_source_group("通常リスト", self.list_controls))
-        layout.addLayout(buttons)
+        layout.addLayout(top)
+        layout.addLayout(controls)
+        layout.addWidget(scroll, 1)
         layout.addWidget(self.status_label)
-        layout.addStretch(1)
         self.setLayout(layout)
-
-    def build_source_group(self, title: str, controls: SourceControls) -> QGroupBox:
-        group = QGroupBox(title)
-        form = QFormLayout()
-        form.addRow("ブラウザソース", controls.source)
-        form.addRow("URL", controls.url)
-        form.addRow("幅", controls.width)
-        form.addRow("高さ", controls.height)
-        buttons = QHBoxLayout()
-        buttons.addWidget(controls.apply)
-        buttons.addWidget(controls.reload)
-        box = QVBoxLayout()
-        box.addLayout(form)
-        box.addLayout(buttons)
-        group.setLayout(box)
-        return group
 
     def _connect(self) -> None:
         self.save_button.clicked.connect(self.save_config)
         self.test_button.clicked.connect(self.test_connection)
         self.reload_sources_button.clicked.connect(self.reload_sources)
-        self.skin_controls.apply.clicked.connect(lambda: self.update_obs(self.skin_controls, "スキン反映OK"))
-        self.skin_controls.reload.clicked.connect(lambda: self.update_obs(self.skin_controls, "スキン再読み込みOK"))
-        self.list_controls.apply.clicked.connect(lambda: self.update_obs(self.list_controls, "リスト反映OK"))
-        self.list_controls.reload.clicked.connect(lambda: self.update_obs(self.list_controls, "リスト再読み込みOK"))
+        self.add_button.clicked.connect(lambda: self.add_row({"label": "", "source": "", "url": "http://127.0.0.1:8792/"}))
+        self.update_all_button.clicked.connect(self.update_all)
 
     def load_config(self, config: AppConfig) -> None:
         self.config = config
         self.ws_url_input.setText(config.obs_ws_url)
         self.password_input.setText(config.obs_ws_password)
-        self.skin_controls.set_source(config.obs_skin_source_name)
-        self.skin_controls.url.setText(config.obs_skin_url)
-        self.skin_controls.width.setValue(int(config.obs_skin_width))
-        self.skin_controls.height.setValue(int(config.obs_skin_height))
-        self.list_controls.set_source(config.obs_list_source_name)
-        self.list_controls.url.setText(config.obs_list_url)
-        self.list_controls.width.setValue(int(config.obs_list_width))
-        self.list_controls.height.setValue(int(config.obs_list_height))
+        self.clear_rows()
+        rows = config.obs_browser_sources or DEFAULT_OBS_ROWS
+        for row in rows:
+            self.add_row(row)
+
+    def clear_rows(self) -> None:
+        for row in list(self.rows):
+            row.setParent(None)
+            row.deleteLater()
+        self.rows.clear()
+
+    def add_row(self, data: dict[str, Any]) -> None:
+        row = ObsSourceRow(data)
+        row.set_sources(self.obs_sources)
+        row.remove_requested.connect(self.remove_row)
+        row.apply_requested.connect(self.handle_row_action)
+        self.rows.append(row)
+        self.rows_layout.addWidget(row)
+
+    def remove_row(self, row: ObsSourceRow) -> None:
+        if row in self.rows:
+            self.rows.remove(row)
+        row.setParent(None)
+        row.deleteLater()
 
     def save_config(self) -> None:
         data = self.config.to_dict()
+        rows = [row.to_dict() for row in self.rows]
         data.update(
             {
                 "obs_ws_url": self.ws_url(),
                 "obs_ws_password": self.password_input.text(),
-                "obs_skin_source_name": self.skin_controls.source_text(),
-                "obs_skin_url": self.skin_controls.url.text().strip() or "http://127.0.0.1:8792/",
-                "obs_skin_width": int(self.skin_controls.width.value()),
-                "obs_skin_height": int(self.skin_controls.height.value()),
-                "obs_list_source_name": self.list_controls.source_text(),
-                "obs_list_url": self.list_controls.url.text().strip() or "http://127.0.0.1:8792/list",
-                "obs_list_width": int(self.list_controls.width.value()),
-                "obs_list_height": int(self.list_controls.height.value()),
+                "obs_browser_sources": rows,
             }
         )
         self.config = AppConfig.from_dict(data)
@@ -177,23 +223,55 @@ class ObsControlTab(QWidget):
             self.status_label.setText(f"ソース一覧取得失敗: {type(exc).__name__}")
 
     def apply_sources(self, sources: Any) -> None:
-        current_skin = self.skin_controls.source_text()
-        current_list = self.list_controls.source_text()
-        for combo in (self.skin_controls.source, self.list_controls.source):
-            combo.clear()
-            for source in list(sources or []):
-                combo.addItem(str(source), str(source))
-        self.skin_controls.set_source(current_skin)
-        self.list_controls.set_source(current_list)
-        self.status_label.setText(f"ソース一覧: {self.skin_controls.source.count()}件")
+        self.obs_sources = [str(source) for source in list(sources or [])]
+        for row in self.rows:
+            row.set_sources(self.obs_sources)
+        self.status_label.setText(f"ソース一覧: {len(self.obs_sources)}件")
 
-    def update_obs(self, controls: SourceControls, success_label: str) -> None:
+    def handle_row_action(self, payload: object) -> None:
+        action, row = payload
+        if action == "refresh":
+            self.refresh_row(row)
+            return
+        self.update_row(row)
+
+    def update_row(self, row: ObsSourceRow) -> None:
         self.save_config()
-        settings = controls.settings(self.ws_url(), self.password_input.text())
+        settings = row.settings(self.ws_url(), self.password_input.text())
         if not settings.source_name:
             self.status_label.setText("ブラウザソース名が空")
             return
-        self.run_task(lambda: asyncio.run(update_browser_source(settings, reload_source=True)), lambda _result: self.status_label.setText(success_label))
+        label = row.label_input.text().strip() or settings.source_name
+        self.run_task(lambda: asyncio.run(update_browser_source(settings, reload_source=True)), lambda _result: self.status_label.setText(f"{label} 更新OK"))
+
+    def refresh_row(self, row: ObsSourceRow) -> None:
+        self.save_config()
+        source_name = row.source_text()
+        if not source_name:
+            self.status_label.setText("ブラウザソース名が空")
+            return
+        label = row.label_input.text().strip() or source_name
+        self.run_task(
+            lambda: asyncio.run(refresh_browser_source(self.ws_url(), self.password_input.text(), source_name)),
+            lambda _result: self.status_label.setText(f"{label} キャッシュ更新OK"),
+        )
+
+    def update_all(self) -> None:
+        self.save_config()
+        source_names = [row.source_text() for row in self.rows if row.source_text()]
+        if not source_names:
+            self.status_label.setText("更新対象なし")
+            return
+
+        def task() -> int:
+            async def run_all() -> int:
+                for source_name in source_names:
+                    await refresh_browser_source(self.ws_url(), self.password_input.text(), source_name)
+                return len(source_names)
+
+            return asyncio.run(run_all())
+
+        self.run_task(task, lambda count: self.status_label.setText(f"一括更新OK: {count}件"))
 
     def ws_url(self) -> str:
         return self.ws_url_input.text().strip() or "ws://127.0.0.1:4455"

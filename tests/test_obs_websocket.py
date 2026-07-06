@@ -18,8 +18,10 @@ def test_obs_config_roundtrip() -> None:
             "obs_browser_url": "http://127.0.0.1:8792/list",
             "obs_browser_width": 1280,
             "obs_browser_height": 720,
-            "obs_skin_source_name": "skin",
-            "obs_list_source_name": "リスト",
+            "obs_browser_sources": [
+                {"label": "右から左スキン", "source": "skin", "url": "http://127.0.0.1:8792/"},
+                {"label": "通常リスト", "source": "リスト", "url": "http://127.0.0.1:8792/list"},
+            ],
         }
     )
     data = config.to_dict()
@@ -28,5 +30,6 @@ def test_obs_config_roundtrip() -> None:
     assert data["obs_browser_url"] == "http://127.0.0.1:8792/list"
     assert data["obs_browser_width"] == 1280
     assert data["obs_browser_height"] == 720
-    assert data["obs_skin_source_name"] == "skin"
-    assert data["obs_list_source_name"] == "リスト"
+    assert len(data["obs_browser_sources"]) == 2
+    assert data["obs_browser_sources"][0]["source"] == "skin"
+    assert data["obs_browser_sources"][1]["source"] == "リスト"

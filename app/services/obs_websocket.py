@@ -113,17 +113,20 @@ async def update_browser_source(settings: ObsBrowserSourceSettings, *, reload_so
                 "inputName": settings.source_name,
                 "inputSettings": {
                     "url": settings.browser_url,
-                    "width": max(1, int(settings.width)),
-                    "height": max(1, int(settings.height)),
                 },
                 "overlay": True,
             },
         )
         if reload_source:
-            await client.request(
-                "PressInputPropertiesButton",
-                {
-                    "inputName": settings.source_name,
-                    "propertyName": "refreshnocache",
-                },
-            )
+            await refresh_browser_source(settings.websocket_url, settings.password, settings.source_name)
+
+
+async def refresh_browser_source(url: str, password: str, source_name: str) -> None:
+    async with ObsWebSocketClient(url, password) as client:
+        await client.request(
+            "PressInputPropertiesButton",
+            {
+                "inputName": source_name,
+                "propertyName": "refreshnocache",
+            },
+        )
