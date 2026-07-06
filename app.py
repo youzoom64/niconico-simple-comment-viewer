@@ -61,12 +61,14 @@ from app.obs.live_overlay import LiveOverlayServer
 from app.profiles.comment_setting_apply import apply_comment_setting_command_to_profile
 from app.services.ai_reply import AiReplyHook
 from app.services.comment_post import post_comment
+from app.services.obs_websocket import ObsBrowserSourceSettings, update_browser_source
 from app.services.output.output_coordinator import OutputCoordinator
 from app.services.sequence.comment_numbering import CommentNumberIssuer
 from app.services.speech_synthesis.fifo_pipeline import VoicevoxFifoPipeline
 from app.services.speech_synthesis.job_factory import build_voicevox_submission
 from app.services.speech_synthesis.voicevox_engine_adapter import build_voicevox_synthesizer
 from app.services.tag_change import TagOperation, change_live_tags, decide_tag_change
+from app.services.youtube_accept import YouTubeVideo, find_first_youtube_video
 from app.settings.ui_state import UiStateStore
 from app.settings.store import JsonSettingsStore
 from app.voicevox.speed_rules import resolve_linear_speed_scale
@@ -182,6 +184,23 @@ class TagChangeWorker(QObject):
             self.failed.emit(self.keyword, f"{type(exc).__name__}: {exc}")
 
 
+class YoutubeAcceptWorker(QObject):
+    finished = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, settings: ObsBrowserSourceSettings, video: YouTubeVideo) -> None:
+        super().__init__()
+        self.settings = settings
+        self.video = video
+
+    def run(self) -> None:
+        try:
+            asyncio.run(update_browser_source(self.settings, reload_source=True))
+            self.finished.emit(self.video)
+        except Exception as exc:
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -222,8 +241,12 @@ class MainWindow(QMainWindow):
         self.comment_anonymous_checkbox.setChecked(True)
         self.comment_send_button = QPushButton("送信")
         self.comment_send_button.setEnabled(False)
+        self.youtube_reset_button = QPushButton("YouTube受付リセット")
         self.comment_post_thread: QThread | None = None
         self.comment_post_worker: CommentPostWorker | None = None
+        self.youtube_accept_thread: QThread | None = None
+        self.youtube_accept_worker: YoutubeAcceptWorker | None = None
+        self.youtube_accepted_video: YouTubeVideo | None = None
         self.tag_change_threads: list[QThread] = []
 
         top = QHBoxLayout()
@@ -292,6 +315,7 @@ class MainWindow(QMainWindow):
         comment_row.addWidget(self.comment_input, 1)
         comment_row.addWidget(self.comment_anonymous_checkbox)
         comment_row.addWidget(self.comment_send_button)
+        comment_row.addWidget(self.youtube_reset_button)
         layout.addLayout(comment_row)
         root = QWidget()
         root.setLayout(layout)
@@ -315,6 +339,7 @@ class MainWindow(QMainWindow):
         self.comment_input.textChanged.connect(self.update_comment_send_enabled)
         self.comment_input.returnPressed.connect(self.send_comment_from_input)
         self.comment_send_button.clicked.connect(self.send_comment_from_input)
+        self.youtube_reset_button.clicked.connect(self.reset_youtube_accept)
         self.restore_ui_state()
         connect_persistent_table_state(self.table, self.ui_state_store, "comments")
         try:
@@ -526,6 +551,7 @@ class MainWindow(QMainWindow):
         ai_decision = self.ai_reply_hook.maybe_submit(lv=self.current_lv, row=voice_row or row, display_name=display_name)
         if ai_decision.matched:
             self.append_log("INFO", f"AI返信フック検出: keyword={ai_decision.keyword} no={(voice_row or row).get('no') or ''}")
+        self.maybe_accept_youtube_video(voice_row or row)
         self.maybe_start_tag_change(voice_row or row)
         if voice_row is not None:
             self.enqueue_voicevox_for_row(voice_row)
@@ -584,6 +610,57 @@ class MainWindow(QMainWindow):
         self.tag_change_threads.append(thread)
         self.append_log("INFO", f"タグ変更開始: keyword={decision.keyword} tags={','.join(decision.tags)}")
         thread.start()
+
+    def maybe_accept_youtube_video(self, row: dict[str, Any]) -> None:
+        if not self.app_config.youtube_accept_enabled:
+            return
+        if self.youtube_accepted_video is not None or self.youtube_accept_thread is not None:
+            return
+        source_name = self.app_config.youtube_obs_source_name.strip()
+        if not source_name:
+            self.append_log("WARN", "YouTube受付スキップ: OBSソース名なし")
+            return
+        video = find_first_youtube_video(str(row.get("content") or row.get("text") or ""))
+        if not video:
+            return
+        settings = ObsBrowserSourceSettings(
+            websocket_url=self.app_config.obs_ws_url,
+            password=self.app_config.obs_ws_password,
+            source_name=source_name,
+            browser_url=video.embed_url,
+            width=1,
+            height=1,
+        )
+        thread = QThread()
+        worker = YoutubeAcceptWorker(settings, video)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self.youtube_accept_finished)
+        worker.failed.connect(self.youtube_accept_failed)
+        worker.finished.connect(lambda *_args: self.cleanup_youtube_accept_worker())
+        worker.failed.connect(lambda *_args: self.cleanup_youtube_accept_worker())
+        self.youtube_accept_thread = thread
+        self.youtube_accept_worker = worker
+        self.append_log("INFO", f"YouTube受付: {video.original_url} -> {source_name}")
+        thread.start()
+
+    def youtube_accept_finished(self, video: YouTubeVideo) -> None:
+        self.youtube_accepted_video = video
+        self.append_log("INFO", f"YouTube受付完了: {video.video_id}")
+
+    def youtube_accept_failed(self, message: str) -> None:
+        self.append_log("ERROR", f"YouTube受付失敗: {message}")
+
+    def cleanup_youtube_accept_worker(self) -> None:
+        if self.youtube_accept_thread:
+            self.youtube_accept_thread.quit()
+            self.youtube_accept_thread.wait(3000)
+        self.youtube_accept_thread = None
+        self.youtube_accept_worker = None
+
+    def reset_youtube_accept(self) -> None:
+        self.youtube_accepted_video = None
+        self.append_log("INFO", "YouTube受付をリセット")
 
     def tag_change_finished(self, keyword: str, tags: tuple[str, ...]) -> None:
         self.append_log("INFO", f"タグ変更完了: keyword={keyword} tags={','.join(tags)}")

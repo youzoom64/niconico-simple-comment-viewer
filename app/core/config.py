@@ -65,6 +65,8 @@ class AppConfig:
     obs_list_width: int = 1920
     obs_list_height: int = 1080
     obs_browser_sources: list[dict[str, Any]] = field(default_factory=list)
+    youtube_accept_enabled: bool = False
+    youtube_obs_source_name: str = "YouTube"
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -129,6 +131,8 @@ class AppConfig:
             "obs_list_width": int(data.get("obs_list_width") or 1920),
             "obs_list_height": int(data.get("obs_list_height") or 1080),
             "obs_browser_sources": normalize_obs_browser_sources(data),
+            "youtube_accept_enabled": bool(data.get("youtube_accept_enabled", False)),
+            "youtube_obs_source_name": str(data.get("youtube_obs_source_name") or "YouTube"),
         }
         extra = {key: value for key, value in data.items() if key not in known}
         return cls(**known, extra=extra)
@@ -194,6 +198,8 @@ class AppConfig:
             "obs_list_width": self.obs_list_width,
             "obs_list_height": self.obs_list_height,
             "obs_browser_sources": self.obs_browser_sources,
+            "youtube_accept_enabled": self.youtube_accept_enabled,
+            "youtube_obs_source_name": self.youtube_obs_source_name,
             **self.extra,
         }
 

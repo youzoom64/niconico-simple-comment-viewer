@@ -107,6 +107,9 @@ class BasicSettingsTab(QWidget):
         self.tag_change_timeout_input = QDoubleSpinBox()
         self.tag_change_timeout_input.setRange(10.0, 180.0)
         self.tag_change_timeout_input.setSingleStep(5.0)
+        self.youtube_accept_enabled_input = QCheckBox("YouTube動画受付モード")
+        self.youtube_obs_source_input = QLineEdit()
+        self.youtube_obs_source_input.setPlaceholderText("例: YouTube")
         self.save_button = QPushButton("保存")
         self.status_label = QLabel("")
         self.list_auto_save_timer = QTimer(self)
@@ -124,6 +127,7 @@ class BasicSettingsTab(QWidget):
         tabs.addTab(self._build_list_overlay_tab(), "通常リスト")
         tabs.addTab(self._build_ai_reply_tab(), "AI返信")
         tabs.addTab(self._build_tag_change_tab(), "タグ変更")
+        tabs.addTab(self._build_youtube_accept_tab(), "YouTube受付")
         buttons = QHBoxLayout()
         buttons.addWidget(self.save_button)
         buttons.addWidget(self.status_label, 1)
@@ -204,6 +208,20 @@ class BasicSettingsTab(QWidget):
         form.addRow("Codex model", self.ai_reply_model_input)
         form.addRow("Codex effort", self.ai_reply_effort_input)
         note = QLabel("キーワード一致、または接頭辞で始まるコメントにCodexで返信を作り、同じセッション履歴を保存して投稿する。")
+        note.setWordWrap(True)
+        layout = QVBoxLayout()
+        layout.addLayout(form)
+        layout.addWidget(note)
+        layout.addStretch(1)
+        widget = QWidget()
+        widget.setLayout(layout)
+        return widget
+
+    def _build_youtube_accept_tab(self) -> QWidget:
+        form = QFormLayout()
+        form.addRow("", self.youtube_accept_enabled_input)
+        form.addRow("OBSブラウザソース", self.youtube_obs_source_input)
+        note = QLabel("有効中、最初に流れたYouTube URLだけをOBSへ送る。以後は受付リセットまで無視する。")
         note.setWordWrap(True)
         layout = QVBoxLayout()
         layout.addLayout(form)
@@ -334,6 +352,8 @@ class BasicSettingsTab(QWidget):
             self.tag_change_headless_input.setChecked(bool(config.tag_change_headless))
             self.reload_chrome_profiles(config.tag_change_chrome_profile)
             self.tag_change_timeout_input.setValue(float(config.tag_change_timeout_seconds))
+            self.youtube_accept_enabled_input.setChecked(bool(config.youtube_accept_enabled))
+            self.youtube_obs_source_input.setText(config.youtube_obs_source_name)
         finally:
             self.loading_config = False
 
@@ -460,6 +480,8 @@ class BasicSettingsTab(QWidget):
                 "tag_change_headless": self.tag_change_headless_input.isChecked(),
                 "tag_change_timeout_seconds": float(self.tag_change_timeout_input.value()),
                 "tag_change_chrome_profile": self.current_tag_change_chrome_profile(),
+                "youtube_accept_enabled": self.youtube_accept_enabled_input.isChecked(),
+                "youtube_obs_source_name": self.youtube_obs_source_input.text().strip() or "YouTube",
             }
         )
         self.config = AppConfig.from_dict(data)
