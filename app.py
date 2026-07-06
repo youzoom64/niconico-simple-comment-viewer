@@ -52,6 +52,7 @@ from app.gui.dialogs.account_profile import AccountProfileDialog
 from app.gui.tabs.basic_settings import BasicSettingsTab
 from app.gui.tabs.event_presets import EventPresetsTab
 from app.gui.tabs.live_users import LiveUsersTab
+from app.gui.tabs.obs_control import ObsControlTab
 from app.gui.user_icons import cached_user_icon
 from app.ndgr.fetcher import AllCommentFetcher
 from app.ndgr.results import FetchResult
@@ -302,6 +303,9 @@ class MainWindow(QMainWindow):
         self.live_users_tab = LiveUsersTab()
         self.tabs.addTab(self.live_users_tab, "アカウントID設定")
         self.tabs.addTab(EventPresetsTab(), "イベント設定")
+        self.obs_control_tab = ObsControlTab(self.settings_store, self.app_config)
+        self.obs_control_tab.config_saved.connect(self.apply_basic_config)
+        self.tabs.addTab(self.obs_control_tab, "OBS連携")
         self.setCentralWidget(self.tabs)
 
         self.connect_button.clicked.connect(self.start_stream)
@@ -360,6 +364,10 @@ class MainWindow(QMainWindow):
             config.voicevox_worker_count,
         )
         self.app_config = config
+        if hasattr(self, "basic_settings_tab"):
+            self.basic_settings_tab.config = config
+        if hasattr(self, "obs_control_tab"):
+            self.obs_control_tab.config = config
         self.ai_reply_hook.update_config(config)
         if old_runtime != new_runtime:
             self.voicevox_pipeline.stop()

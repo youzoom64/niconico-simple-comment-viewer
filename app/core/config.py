@@ -50,6 +50,12 @@ class AppConfig:
     tag_change_headless: bool = True
     tag_change_timeout_seconds: float = 30.0
     tag_change_chrome_profile: str = ""
+    obs_ws_url: str = "ws://127.0.0.1:4455"
+    obs_ws_password: str = ""
+    obs_browser_source_name: str = ""
+    obs_browser_url: str = "http://127.0.0.1:8792/"
+    obs_browser_width: int = 1920
+    obs_browser_height: int = 1080
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -99,6 +105,12 @@ class AppConfig:
             "tag_change_headless": bool(data.get("tag_change_headless", True)),
             "tag_change_timeout_seconds": float(data.get("tag_change_timeout_seconds") or 30.0),
             "tag_change_chrome_profile": str(data.get("tag_change_chrome_profile") or ""),
+            "obs_ws_url": str(data.get("obs_ws_url") or "ws://127.0.0.1:4455"),
+            "obs_ws_password": str(data.get("obs_ws_password") or ""),
+            "obs_browser_source_name": str(data.get("obs_browser_source_name") or ""),
+            "obs_browser_url": str(data.get("obs_browser_url") or "http://127.0.0.1:8792/"),
+            "obs_browser_width": int(data.get("obs_browser_width") or 1920),
+            "obs_browser_height": int(data.get("obs_browser_height") or 1080),
         }
         extra = {key: value for key, value in data.items() if key not in known}
         return cls(**known, extra=extra)
@@ -149,5 +161,11 @@ class AppConfig:
             "tag_change_headless": self.tag_change_headless,
             "tag_change_timeout_seconds": self.tag_change_timeout_seconds,
             "tag_change_chrome_profile": self.tag_change_chrome_profile,
+            "obs_ws_url": self.obs_ws_url,
+            "obs_ws_password": self.obs_ws_password,
+            "obs_browser_source_name": self.obs_browser_source_name,
+            "obs_browser_url": self.obs_browser_url,
+            "obs_browser_width": self.obs_browser_width,
+            "obs_browser_height": self.obs_browser_height,
             **self.extra,
         }
