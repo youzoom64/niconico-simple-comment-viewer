@@ -56,9 +56,9 @@ class BasicSettingsTab(QWidget):
         self.speed_max_input.setSingleStep(0.1)
         self.list_background_path_input = QLineEdit()
         self.list_background_browse_button = QPushButton("参照")
-        self.list_background_opacity_input = QDoubleSpinBox()
-        self.list_background_opacity_input.setRange(0.0, 1.0)
-        self.list_background_opacity_input.setSingleStep(0.05)
+        self.list_background_opacity_input = QSlider(Qt.Orientation.Horizontal)
+        self.list_background_opacity_input.setRange(0, 100)
+        self.list_background_opacity_label = QLabel("")
         self.list_show_icons_input = QCheckBox("アイコンを表示")
         self.list_icon_size_input = QSpinBox()
         self.list_icon_size_input.setRange(12, 128)
@@ -76,9 +76,9 @@ class BasicSettingsTab(QWidget):
         self.list_name_color_input = QLineEdit()
         self.list_text_color_input = QLineEdit()
         self.list_row_background_color_input = QLineEdit()
-        self.list_row_background_opacity_input = QDoubleSpinBox()
-        self.list_row_background_opacity_input.setRange(0.0, 1.0)
-        self.list_row_background_opacity_input.setSingleStep(0.05)
+        self.list_row_background_opacity_input = QSlider(Qt.Orientation.Horizontal)
+        self.list_row_background_opacity_input.setRange(0, 100)
+        self.list_row_background_opacity_label = QLabel("")
         self.list_row_gap_input = QSpinBox()
         self.list_row_gap_input.setRange(0, 80)
         self.list_max_rows_input = QSpinBox()
@@ -155,7 +155,10 @@ class BasicSettingsTab(QWidget):
         background_row.addWidget(self.list_background_path_input, 1)
         background_row.addWidget(self.list_background_browse_button)
         form.addRow("背景画像", background_row)
-        form.addRow("背景透明度", self.list_background_opacity_input)
+        background_opacity_row = QHBoxLayout()
+        background_opacity_row.addWidget(self.list_background_opacity_input, 1)
+        background_opacity_row.addWidget(self.list_background_opacity_label)
+        form.addRow("背景透明度", background_opacity_row)
         form.addRow("", self.list_show_icons_input)
         form.addRow("アイコンサイズ", self.list_icon_size_input)
         name_width_row = QHBoxLayout()
@@ -168,7 +171,10 @@ class BasicSettingsTab(QWidget):
         form.addRow("名前色", self.list_name_color_input)
         form.addRow("本文色", self.list_text_color_input)
         form.addRow("行背景色", self.list_row_background_color_input)
-        form.addRow("行背景透明度", self.list_row_background_opacity_input)
+        row_opacity_row = QHBoxLayout()
+        row_opacity_row.addWidget(self.list_row_background_opacity_input, 1)
+        row_opacity_row.addWidget(self.list_row_background_opacity_label)
+        form.addRow("行背景透明度", row_opacity_row)
         form.addRow("行間", self.list_row_gap_input)
         form.addRow("最大行数", self.list_max_rows_input)
         note = QLabel("このタブの変更は自動保存され、OBS の /list 表示へ約1秒以内に反映する。")
@@ -193,6 +199,7 @@ class BasicSettingsTab(QWidget):
 
     def _connect_list_realtime_save(self) -> None:
         self.list_background_path_input.textChanged.connect(self.schedule_list_auto_save)
+        self.list_background_opacity_input.valueChanged.connect(self.update_list_background_opacity_label)
         self.list_background_opacity_input.valueChanged.connect(self.schedule_list_auto_save)
         self.list_show_icons_input.toggled.connect(self.schedule_list_auto_save)
         self.list_icon_size_input.valueChanged.connect(self.schedule_list_auto_save)
@@ -204,6 +211,7 @@ class BasicSettingsTab(QWidget):
         self.list_name_color_input.textChanged.connect(self.schedule_list_auto_save)
         self.list_text_color_input.textChanged.connect(self.schedule_list_auto_save)
         self.list_row_background_color_input.textChanged.connect(self.schedule_list_auto_save)
+        self.list_row_background_opacity_input.valueChanged.connect(self.update_list_row_background_opacity_label)
         self.list_row_background_opacity_input.valueChanged.connect(self.schedule_list_auto_save)
         self.list_row_gap_input.valueChanged.connect(self.schedule_list_auto_save)
         self.list_max_rows_input.valueChanged.connect(self.schedule_list_auto_save)
@@ -234,7 +242,8 @@ class BasicSettingsTab(QWidget):
             self.speed_first_queue_input.setValue(float(config.voice_speed_first_queue_scale))
             self.speed_max_input.setValue(float(config.voice_speed_max_scale))
             self.list_background_path_input.setText(config.list_background_path)
-            self.list_background_opacity_input.setValue(float(config.list_background_opacity))
+            self.list_background_opacity_input.setValue(opacity_to_slider(config.list_background_opacity))
+            self.update_list_background_opacity_label(self.list_background_opacity_input.value())
             self.list_show_icons_input.setChecked(bool(config.list_show_icons))
             self.list_icon_size_input.setValue(int(config.list_icon_size))
             self.list_name_width_input.setValue(int(config.list_name_width))
@@ -245,7 +254,8 @@ class BasicSettingsTab(QWidget):
             self.list_name_color_input.setText(config.list_name_color)
             self.list_text_color_input.setText(config.list_text_color)
             self.list_row_background_color_input.setText(config.list_row_background_color)
-            self.list_row_background_opacity_input.setValue(float(config.list_row_background_opacity))
+            self.list_row_background_opacity_input.setValue(opacity_to_slider(config.list_row_background_opacity))
+            self.update_list_row_background_opacity_label(self.list_row_background_opacity_input.value())
             self.list_row_gap_input.setValue(int(config.list_row_gap))
             self.list_max_rows_input.setValue(int(config.list_max_rows))
         finally:
@@ -282,6 +292,12 @@ class BasicSettingsTab(QWidget):
     def update_list_name_width_label(self, value: int) -> None:
         self.list_name_width_label.setText(f"{int(value)}px")
 
+    def update_list_background_opacity_label(self, value: int) -> None:
+        self.list_background_opacity_label.setText(f"{int(value)}%")
+
+    def update_list_row_background_opacity_label(self, value: int) -> None:
+        self.list_row_background_opacity_label.setText(f"{int(value)}%")
+
     def reload_speakers(self) -> None:
         try:
             count = self.voicevox_style_input.reload_from_engine(
@@ -317,7 +333,7 @@ class BasicSettingsTab(QWidget):
                 "voice_speed_first_queue_scale": float(self.speed_first_queue_input.value()),
                 "voice_speed_max_scale": float(self.speed_max_input.value()),
                 "list_background_path": self.list_background_path_input.text().strip(),
-                "list_background_opacity": float(self.list_background_opacity_input.value()),
+                "list_background_opacity": slider_to_opacity(self.list_background_opacity_input.value()),
                 "list_show_icons": self.list_show_icons_input.isChecked(),
                 "list_icon_size": int(self.list_icon_size_input.value()),
                 "list_name_width": int(self.list_name_width_input.value()),
@@ -327,7 +343,7 @@ class BasicSettingsTab(QWidget):
                 "list_name_color": self.list_name_color_input.text().strip() or "#8fd3ff",
                 "list_text_color": self.list_text_color_input.text().strip() or "#ffffff",
                 "list_row_background_color": self.list_row_background_color_input.text().strip() or "#000000",
-                "list_row_background_opacity": float(self.list_row_background_opacity_input.value()),
+                "list_row_background_opacity": slider_to_opacity(self.list_row_background_opacity_input.value()),
                 "list_row_gap": int(self.list_row_gap_input.value()),
                 "list_max_rows": int(self.list_max_rows_input.value()),
             }
@@ -355,3 +371,11 @@ def combo_int(combo: QComboBox, default: int) -> int:
         return int(combo.currentData())
     except (TypeError, ValueError):
         return default
+
+
+def opacity_to_slider(value: float) -> int:
+    return max(0, min(100, int(round(float(value) * 100))))
+
+
+def slider_to_opacity(value: int) -> float:
+    return max(0.0, min(1.0, float(value) / 100.0))
