@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QFileDialog, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QSpinBox, QTabWidget, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFileDialog, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QSpinBox, QTabWidget, QTextEdit, QVBoxLayout, QWidget
 
 from app.core.config import AppConfig
 from app.gui.common.github_skin_picker import select_github_skin
@@ -83,6 +83,17 @@ class BasicSettingsTab(QWidget):
         self.list_row_gap_input.setRange(0, 80)
         self.list_max_rows_input = QSpinBox()
         self.list_max_rows_input.setRange(1, 80)
+        self.ai_reply_enabled_input = QCheckBox("AI返信フックを使う")
+        self.ai_reply_keywords_input = QTextEdit()
+        self.ai_reply_keywords_input.setPlaceholderText("この文字を含むコメントで反応。1行1キーワード、カンマ区切りも可")
+        self.ai_reply_keywords_input.setFixedHeight(90)
+        self.ai_reply_endpoint_url_input = QLineEdit()
+        self.ai_reply_endpoint_url_input.setPlaceholderText("例: http://127.0.0.1:8787/comment-reaction")
+        self.ai_reply_api_key_input = QLineEdit()
+        self.ai_reply_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.ai_reply_timeout_input = QDoubleSpinBox()
+        self.ai_reply_timeout_input.setRange(1.0, 120.0)
+        self.ai_reply_timeout_input.setSingleStep(1.0)
         self.save_button = QPushButton("保存")
         self.status_label = QLabel("")
         self.list_auto_save_timer = QTimer(self)
@@ -98,6 +109,7 @@ class BasicSettingsTab(QWidget):
         tabs.addTab(self._build_response_tab(), "基本応答")
         tabs.addTab(self._build_speed_tab(), "再生速度")
         tabs.addTab(self._build_list_overlay_tab(), "通常リスト")
+        tabs.addTab(self._build_ai_reply_tab(), "AI返信")
         buttons = QHBoxLayout()
         buttons.addWidget(self.save_button)
         buttons.addWidget(self.status_label, 1)
@@ -140,6 +152,23 @@ class BasicSettingsTab(QWidget):
         form.addRow("待機1件時の倍率", self.speed_first_queue_input)
         form.addRow("最大倍率", self.speed_max_input)
         note = QLabel("読む直前のキュー件数で倍率を決める。例: 1件時1.1なら 1.1 / 1.2 / 1.3")
+        note.setWordWrap(True)
+        layout = QVBoxLayout()
+        layout.addLayout(form)
+        layout.addWidget(note)
+        layout.addStretch(1)
+        widget = QWidget()
+        widget.setLayout(layout)
+        return widget
+
+    def _build_ai_reply_tab(self) -> QWidget:
+        form = QFormLayout()
+        form.addRow("", self.ai_reply_enabled_input)
+        form.addRow("反応キーワード", self.ai_reply_keywords_input)
+        form.addRow("送信先URL", self.ai_reply_endpoint_url_input)
+        form.addRow("APIキー", self.ai_reply_api_key_input)
+        form.addRow("timeout秒", self.ai_reply_timeout_input)
+        note = QLabel("一致したコメントをJSONで送る。AI生成とニコ生投稿は送信先側で処理する。")
         note.setWordWrap(True)
         layout = QVBoxLayout()
         layout.addLayout(form)
@@ -258,6 +287,11 @@ class BasicSettingsTab(QWidget):
             self.update_list_row_background_opacity_label(self.list_row_background_opacity_input.value())
             self.list_row_gap_input.setValue(int(config.list_row_gap))
             self.list_max_rows_input.setValue(int(config.list_max_rows))
+            self.ai_reply_enabled_input.setChecked(bool(config.ai_reply_enabled))
+            self.ai_reply_keywords_input.setPlainText(config.ai_reply_keywords)
+            self.ai_reply_endpoint_url_input.setText(config.ai_reply_endpoint_url)
+            self.ai_reply_api_key_input.setText(config.ai_reply_api_key)
+            self.ai_reply_timeout_input.setValue(float(config.ai_reply_timeout_seconds))
         finally:
             self.loading_config = False
 
@@ -346,6 +380,11 @@ class BasicSettingsTab(QWidget):
                 "list_row_background_opacity": slider_to_opacity(self.list_row_background_opacity_input.value()),
                 "list_row_gap": int(self.list_row_gap_input.value()),
                 "list_max_rows": int(self.list_max_rows_input.value()),
+                "ai_reply_enabled": self.ai_reply_enabled_input.isChecked(),
+                "ai_reply_keywords": self.ai_reply_keywords_input.toPlainText().strip(),
+                "ai_reply_endpoint_url": self.ai_reply_endpoint_url_input.text().strip(),
+                "ai_reply_api_key": self.ai_reply_api_key_input.text(),
+                "ai_reply_timeout_seconds": float(self.ai_reply_timeout_input.value()),
             }
         )
         self.config = AppConfig.from_dict(data)

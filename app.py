@@ -58,6 +58,7 @@ from app.ndgr.results import FetchResult
 from app.ndgr.streamer import LiveCommentStreamer
 from app.obs.live_overlay import LiveOverlayServer
 from app.profiles.comment_setting_apply import apply_comment_setting_command_to_profile
+from app.services.ai_reply import AiReplyHook
 from app.services.output.output_coordinator import OutputCoordinator
 from app.services.sequence.comment_numbering import CommentNumberIssuer
 from app.services.speech_synthesis.fifo_pipeline import VoicevoxFifoPipeline
@@ -142,6 +143,7 @@ class MainWindow(QMainWindow):
         self.voicevox_signals = VoicevoxGuiSignals()
         self.voicevox_signals.log.connect(self.handle_log)
         self.overlay_server = LiveOverlayServer()
+        self.ai_reply_hook = AiReplyHook(self.app_config, self.voicevox_signals.log.emit)
         self.voicevox_pipeline = self.create_voicevox_pipeline()
         self.reload_profile_display_names()
 
@@ -282,6 +284,7 @@ class MainWindow(QMainWindow):
             config.voicevox_worker_count,
         )
         self.app_config = config
+        self.ai_reply_hook.update_config(config)
         if old_runtime != new_runtime:
             self.voicevox_pipeline.stop()
             self.voicevox_pipeline = self.create_voicevox_pipeline()
@@ -388,6 +391,10 @@ class MainWindow(QMainWindow):
             self.table.setSortingEnabled(sorting_enabled)
         restore_scroll(self.table, scroll_state, keep_bottom=should_follow_bottom)
         voice_row = self.apply_comment_setting_command_from_row(row)
+        display_name = self.display_name_from_row(voice_row or row)
+        ai_decision = self.ai_reply_hook.maybe_submit(lv=self.current_lv, row=voice_row or row, display_name=display_name)
+        if ai_decision.matched:
+            self.append_log("INFO", f"AI返信フック検出: keyword={ai_decision.keyword} no={(voice_row or row).get('no') or ''}")
         if voice_row is not None:
             self.enqueue_voicevox_for_row(voice_row)
         if row_index == 0 or (row_index + 1) % 100 == 0:
