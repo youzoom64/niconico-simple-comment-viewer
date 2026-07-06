@@ -35,7 +35,7 @@ body {
   flex-direction: column;
   justify-content: flex-end;
   gap: var(--row-gap);
-  padding: 10px;
+  padding: 0;
   box-sizing: border-box;
   overflow: hidden;
   background: transparent;
@@ -48,6 +48,7 @@ body {
   column-gap: 8px;
   max-width: 100%;
   padding: 5px 8px;
+  min-height: var(--row-min-height);
   border-radius: 4px;
   background: var(--row-background);
   border: 1px solid rgba(255, 255, 255, .16);
@@ -142,6 +143,7 @@ function applySettings(settings) {
   doc.style.setProperty("--icon-size", `${iconSize}px`);
   doc.style.setProperty("--icon-column", showIcons ? `${iconSize}px` : "0px");
   doc.style.setProperty("--icon-display", showIcons ? "block" : "none");
+  doc.style.setProperty("--row-min-height", showIcons ? `${iconSize}px` : "0px");
   doc.style.setProperty("--name-width", `${nameWidth}px`);
   doc.style.setProperty("--list-font-family", currentSettings.font_family || "Yu Gothic UI");
   doc.style.setProperty("--name-font-size", `${clampNumber(currentSettings.name_font_size, 20, 8, 96)}px`);
@@ -181,7 +183,7 @@ function stripNamePrefix(event) {
 function displayName(event) {
   const name = (event.display_name || "").trim();
   if (name) return name;
-  return event.event_kind || "comment";
+  return "";
 }
 
 function addEvent(event) {

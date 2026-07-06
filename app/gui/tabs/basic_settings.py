@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QFileDialog, QCheckBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QSpinBox, QTabWidget, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFileDialog, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QSpinBox, QTabWidget, QVBoxLayout, QWidget
 
 from app.core.config import AppConfig
 from app.gui.common.github_skin_picker import select_github_skin
@@ -62,13 +62,17 @@ class BasicSettingsTab(QWidget):
         self.list_show_icons_input = QCheckBox("アイコンを表示")
         self.list_icon_size_input = QSpinBox()
         self.list_icon_size_input.setRange(12, 128)
-        self.list_name_width_input = QSpinBox()
+        self.list_name_width_input = QSlider(Qt.Orientation.Horizontal)
         self.list_name_width_input.setRange(40, 600)
+        self.list_name_width_input.setSingleStep(5)
+        self.list_name_width_input.setPageStep(20)
+        self.list_name_width_label = QLabel("")
         self.list_font_family_input = QLineEdit()
-        self.list_name_font_size_input = QSpinBox()
-        self.list_name_font_size_input.setRange(8, 96)
-        self.list_text_font_size_input = QSpinBox()
-        self.list_text_font_size_input.setRange(8, 96)
+        self.list_name_font_size_input = QComboBox()
+        self.list_text_font_size_input = QComboBox()
+        for size in list_font_size_options():
+            self.list_name_font_size_input.addItem(str(size), size)
+            self.list_text_font_size_input.addItem(str(size), size)
         self.list_name_color_input = QLineEdit()
         self.list_text_color_input = QLineEdit()
         self.list_row_background_color_input = QLineEdit()
@@ -154,7 +158,10 @@ class BasicSettingsTab(QWidget):
         form.addRow("背景透明度", self.list_background_opacity_input)
         form.addRow("", self.list_show_icons_input)
         form.addRow("アイコンサイズ", self.list_icon_size_input)
-        form.addRow("名前幅", self.list_name_width_input)
+        name_width_row = QHBoxLayout()
+        name_width_row.addWidget(self.list_name_width_input, 1)
+        name_width_row.addWidget(self.list_name_width_label)
+        form.addRow("名前幅", name_width_row)
         form.addRow("フォント", self.list_font_family_input)
         form.addRow("名前サイズ", self.list_name_font_size_input)
         form.addRow("本文サイズ", self.list_text_font_size_input)
@@ -189,10 +196,11 @@ class BasicSettingsTab(QWidget):
         self.list_background_opacity_input.valueChanged.connect(self.schedule_list_auto_save)
         self.list_show_icons_input.toggled.connect(self.schedule_list_auto_save)
         self.list_icon_size_input.valueChanged.connect(self.schedule_list_auto_save)
+        self.list_name_width_input.valueChanged.connect(self.update_list_name_width_label)
         self.list_name_width_input.valueChanged.connect(self.schedule_list_auto_save)
         self.list_font_family_input.textChanged.connect(self.schedule_list_auto_save)
-        self.list_name_font_size_input.valueChanged.connect(self.schedule_list_auto_save)
-        self.list_text_font_size_input.valueChanged.connect(self.schedule_list_auto_save)
+        self.list_name_font_size_input.currentIndexChanged.connect(self.schedule_list_auto_save)
+        self.list_text_font_size_input.currentIndexChanged.connect(self.schedule_list_auto_save)
         self.list_name_color_input.textChanged.connect(self.schedule_list_auto_save)
         self.list_text_color_input.textChanged.connect(self.schedule_list_auto_save)
         self.list_row_background_color_input.textChanged.connect(self.schedule_list_auto_save)
@@ -230,9 +238,10 @@ class BasicSettingsTab(QWidget):
             self.list_show_icons_input.setChecked(bool(config.list_show_icons))
             self.list_icon_size_input.setValue(int(config.list_icon_size))
             self.list_name_width_input.setValue(int(config.list_name_width))
+            self.update_list_name_width_label(int(config.list_name_width))
             self.list_font_family_input.setText(config.list_font_family)
-            self.list_name_font_size_input.setValue(int(config.list_name_font_size))
-            self.list_text_font_size_input.setValue(int(config.list_text_font_size))
+            set_combo_int(self.list_name_font_size_input, int(config.list_name_font_size))
+            set_combo_int(self.list_text_font_size_input, int(config.list_text_font_size))
             self.list_name_color_input.setText(config.list_name_color)
             self.list_text_color_input.setText(config.list_text_color)
             self.list_row_background_color_input.setText(config.list_row_background_color)
@@ -269,6 +278,9 @@ class BasicSettingsTab(QWidget):
 
     def update_voice_volume_label(self, value: int) -> None:
         self.voice_volume_label.setText(f"{int(value)}%")
+
+    def update_list_name_width_label(self, value: int) -> None:
+        self.list_name_width_label.setText(f"{int(value)}px")
 
     def reload_speakers(self) -> None:
         try:
@@ -310,8 +322,8 @@ class BasicSettingsTab(QWidget):
                 "list_icon_size": int(self.list_icon_size_input.value()),
                 "list_name_width": int(self.list_name_width_input.value()),
                 "list_font_family": self.list_font_family_input.text().strip() or "Yu Gothic UI",
-                "list_name_font_size": int(self.list_name_font_size_input.value()),
-                "list_text_font_size": int(self.list_text_font_size_input.value()),
+                "list_name_font_size": combo_int(self.list_name_font_size_input, 20),
+                "list_text_font_size": combo_int(self.list_text_font_size_input, 22),
                 "list_name_color": self.list_name_color_input.text().strip() or "#8fd3ff",
                 "list_text_color": self.list_text_color_input.text().strip() or "#ffffff",
                 "list_row_background_color": self.list_row_background_color_input.text().strip() or "#000000",
@@ -324,3 +336,22 @@ class BasicSettingsTab(QWidget):
         self.store.save_config(self.config)
         self.status_label.setText("保存済み")
         self.config_saved.emit(self.config)
+
+
+def list_font_size_options() -> list[int]:
+    return [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 44, 48, 56, 64, 72, 84, 96]
+
+
+def set_combo_int(combo: QComboBox, value: int) -> None:
+    index = combo.findData(int(value))
+    if index < 0:
+        combo.addItem(str(int(value)), int(value))
+        index = combo.findData(int(value))
+    combo.setCurrentIndex(index)
+
+
+def combo_int(combo: QComboBox, default: int) -> int:
+    try:
+        return int(combo.currentData())
+    except (TypeError, ValueError):
+        return default

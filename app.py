@@ -422,6 +422,10 @@ class MainWindow(QMainWindow):
     def enqueue_voicevox_for_row(self, row: dict[str, Any]) -> None:
         comment_no = self.comment_numbers.issue()
         try:
+            row = dict(row)
+            display_name = self.display_name_from_row(row)
+            if display_name:
+                row["display_name"] = display_name
             with database_session() as conn:
                 initialize_database(conn)
                 plan = build_event_processing_plan(

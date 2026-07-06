@@ -164,7 +164,7 @@ def packet_to_overlay_event(event_id: int, packet: RenderPacket) -> dict[str, An
     profile = packet.render_profile
     display_name = str(packet.comment.display_name or "").strip()
     display_text = str(packet.text_for_display or "")
-    if display_name:
+    if display_name and not starts_with_display_name(display_text, display_name):
         display_text = f"{display_name}:{display_text}"
     return {
         "id": event_id,
@@ -184,6 +184,15 @@ def packet_to_overlay_event(event_id: int, packet: RenderPacket) -> dict[str, An
         "duration_seconds": max(1.0, float(profile.duration_seconds)),
         "audio_name": packet.audio_path.name if packet.audio_path else "",
     }
+
+
+def starts_with_display_name(text: str, display_name: str) -> bool:
+    normalized_text = str(text or "").lstrip()
+    normalized_name = str(display_name or "").strip()
+    return bool(normalized_name) and (
+        normalized_text.startswith(f"{normalized_name}:")
+        or normalized_text.startswith(f"{normalized_name}：")
+    )
 
 
 def overlay_skin_url(path: str) -> str:
