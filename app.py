@@ -130,6 +130,7 @@ class MainWindow(QMainWindow):
         self.resize(1280, 760)
         self.rows: list[dict[str, Any]] = []
         self.profile_display_names: dict[str, str] = {}
+        self.anonymous_184_first_comments: dict[str, str] = {}
         self.current_lv = ""
         self.comments_auto_scroll = True
         self.thread: QThread | None = None
@@ -313,10 +314,11 @@ class MainWindow(QMainWindow):
         keep_existing_rows = mode == "stream" and self.current_lv == lv and bool(self.rows)
         if not keep_existing_rows:
             self.rows = []
+            self.current_lv = lv
+            self.load_anonymous_184_first_comments(lv)
             self.table.setRowCount(0)
             self.raw_text.clear()
             self.log_text.clear()
-            self.current_lv = lv
             self.comments_auto_scroll = True
         label = "接続中" if mode == "stream" else "全件取得中"
         kept = f" / 既存{len(self.rows)}件を保持" if keep_existing_rows else ""
@@ -350,6 +352,8 @@ class MainWindow(QMainWindow):
     def fetch_finished(self, result: FetchResult) -> None:
         self.current_lv = result.lv
         self.rows = result.rows
+        self.rebuild_anonymous_184_first_comments(result.rows)
+        self.save_anonymous_184_first_comments()
         self.populate_table(result.rows)
         counts = Counter(str(row.get("kind") or "unknown") for row in result.rows)
         self.status_label.setText(f"{result.lv} 取得完了: {len(result.rows)}件 / {dict(counts)}")
@@ -371,6 +375,7 @@ class MainWindow(QMainWindow):
     def append_stream_row(self, row: dict[str, Any]) -> None:
         scroll_state = capture_scroll(self.table)
         should_follow_bottom = self.comments_auto_scroll
+        self.anonymous_184_display_name(row, persist=True)
         self.rows.append(row)
         sorting_enabled = self.table.isSortingEnabled()
         self.table.setSortingEnabled(False)
@@ -614,7 +619,69 @@ class MainWindow(QMainWindow):
             value = str(row.get(key) or "").strip()
             if value and value in self.profile_display_names:
                 return self.profile_display_names[value]
+        anonymous_name = self.anonymous_184_display_name(row)
+        if anonymous_name:
+            return anonymous_name
         return ""
+
+    def rebuild_anonymous_184_first_comments(self, rows: list[dict[str, Any]]) -> None:
+        self.anonymous_184_first_comments = {}
+        for row in rows:
+            self.anonymous_184_display_name(row, persist=False)
+
+    def anonymous_184_display_name(self, row: dict[str, Any], persist: bool = False) -> str:
+        if not self.is_anonymous_184_row(row):
+            return ""
+        anonymous_id = str(row.get("hashed_user_id") or row.get("user_id") or "").strip()
+        if not anonymous_id:
+            return ""
+        first_no = self.anonymous_184_first_comments.get(anonymous_id)
+        if not first_no:
+            first_no = str(row.get("no") or "").strip()
+            if not first_no:
+                first_no = str(len(self.anonymous_184_first_comments) + 1)
+            self.anonymous_184_first_comments[anonymous_id] = first_no
+            if persist:
+                self.save_anonymous_184_first_comments()
+        return f"{first_no}コメさん"
+
+    def load_anonymous_184_first_comments(self, lv: str) -> None:
+        section = self.ui_state_store.section("anonymous_184_first_comments")
+        mapping = section.get(lv) if isinstance(section, dict) else {}
+        if not isinstance(mapping, dict):
+            self.anonymous_184_first_comments = {}
+            return
+        self.anonymous_184_first_comments = {
+            str(key): str(value)
+            for key, value in mapping.items()
+            if str(key).strip() and str(value).strip()
+        }
+
+    def save_anonymous_184_first_comments(self) -> None:
+        if not self.current_lv:
+            return
+        section = self.ui_state_store.section("anonymous_184_first_comments")
+        if not isinstance(section, dict):
+            section = {}
+        section[self.current_lv] = dict(self.anonymous_184_first_comments)
+        self.ui_state_store.save_section("anonymous_184_first_comments", section)
+
+    @staticmethod
+    def is_anonymous_184_row(row: dict[str, Any]) -> bool:
+        commands = row.get("commands")
+        command_values: list[str] = []
+        if isinstance(commands, list):
+            command_values = [str(value) for value in commands]
+        elif commands:
+            command_values = [str(commands)]
+        raw_user_id = str(row.get("raw_user_id") or "").strip()
+        hashed_user_id = str(row.get("hashed_user_id") or "").strip()
+        kind = str(row.get("kind") or row.get("event_kind") or "").strip()
+        return bool(hashed_user_id) and (
+            raw_user_id in {"", "0"}
+            or "184" in command_values
+            or kind == "anonymous_184_chat"
+        )
 
     @staticmethod
     def payload_name_from_row(row: dict[str, Any]) -> str:
@@ -661,6 +728,7 @@ class MainWindow(QMainWindow):
         tables["comments"] = export_table_state(self.table)
         self.ui_state_store.save(
             {
+                **state,
                 "window": export_window_state(self),
                 "tables": tables,
             }
