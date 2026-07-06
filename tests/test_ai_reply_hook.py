@@ -1,18 +1,36 @@
 from __future__ import annotations
 
 from app.core.config import AppConfig
-from app.services.ai_reply import build_ai_reply_payload, decide_ai_reply, parse_keywords
+from app.services.ai_reply import AiReplyDecision, build_ai_reply_payload, decide_ai_reply, parse_keywords, parse_rules
 
 
 def test_parse_keywords_accepts_lines_and_commas() -> None:
     assert parse_keywords("おい\n 返事して,AI ") == ["おい", "返事して", "AI"]
 
 
+def test_parse_rules_accepts_individual_reactions() -> None:
+    rules = parse_rules("おはよう=>おはようございます\n初見=>初見さんいらっしゃい")
+    assert [(rule.keyword, rule.reaction) for rule in rules] == [
+        ("おはよう", "おはようございます"),
+        ("初見", "初見さんいらっしゃい"),
+    ]
+
+
 def test_decide_ai_reply_matches_keyword() -> None:
-    config = AppConfig(ai_reply_enabled=True, ai_reply_keywords="返事して")
+    config = AppConfig(ai_reply_enabled=True, ai_reply_rules="返事して=>返事する")
     decision = decide_ai_reply(config, {"content": "AI返事して"})
     assert decision.matched
     assert decision.keyword == "返事して"
+    assert decision.reaction == "返事する"
+
+
+def test_decide_ai_reply_matches_prefix() -> None:
+    config = AppConfig(ai_reply_enabled=True, ai_reply_trigger_prefix=">AI", ai_reply_rules="")
+    decision = decide_ai_reply(config, {"content": ">AI 今日どうする"})
+    assert decision.matched
+    assert decision.keyword == ">AI"
+    assert decision.prompt == "今日どうする"
+    assert decision.trigger_type == "prefix"
 
 
 def test_decide_ai_reply_ignores_disabled() -> None:
@@ -25,7 +43,7 @@ def test_decide_ai_reply_ignores_disabled() -> None:
 def test_build_ai_reply_payload_contains_monitor_friendly_fields() -> None:
     payload = build_ai_reply_payload(
         lv="lv123",
-        keyword="返事して",
+        decision=AiReplyDecision(True, keyword="返事して", reaction="返事する", session_id="s1", trigger_type="keyword"),
         display_name="1コメさん",
         row={
             "kind": "anonymous_184_chat",
@@ -37,5 +55,7 @@ def test_build_ai_reply_payload_contains_monitor_friendly_fields() -> None:
     )
     assert payload["event"] == "comment_ai_reply_requested"
     assert payload["watch_url"] == "https://live.nicovideo.jp/watch/lv123"
+    assert payload["reaction"] == "返事する"
+    assert payload["session_id"] == "s1"
     assert payload["comment"]["display_name"] == "1コメさん"
     assert payload["comment"]["content"] == "返事して"

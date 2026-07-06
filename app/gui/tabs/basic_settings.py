@@ -84,9 +84,11 @@ class BasicSettingsTab(QWidget):
         self.list_max_rows_input = QSpinBox()
         self.list_max_rows_input.setRange(1, 80)
         self.ai_reply_enabled_input = QCheckBox("AI返信フックを使う")
-        self.ai_reply_keywords_input = QTextEdit()
-        self.ai_reply_keywords_input.setPlaceholderText("この文字を含むコメントで反応。1行1キーワード、カンマ区切りも可")
-        self.ai_reply_keywords_input.setFixedHeight(90)
+        self.ai_reply_rules_input = QTextEdit()
+        self.ai_reply_rules_input.setPlaceholderText("1行1ルール。例: おはよう=>おはようございます / 初見=>初見さんいらっしゃい")
+        self.ai_reply_rules_input.setFixedHeight(120)
+        self.ai_reply_trigger_prefix_input = QLineEdit()
+        self.ai_reply_trigger_prefix_input.setPlaceholderText("例: >AI")
         self.ai_reply_endpoint_url_input = QLineEdit()
         self.ai_reply_endpoint_url_input.setPlaceholderText("例: http://127.0.0.1:8787/comment-reaction")
         self.ai_reply_api_key_input = QLineEdit()
@@ -164,11 +166,12 @@ class BasicSettingsTab(QWidget):
     def _build_ai_reply_tab(self) -> QWidget:
         form = QFormLayout()
         form.addRow("", self.ai_reply_enabled_input)
-        form.addRow("反応キーワード", self.ai_reply_keywords_input)
+        form.addRow("個別反応ルール", self.ai_reply_rules_input)
+        form.addRow("AI呼び出し接頭辞", self.ai_reply_trigger_prefix_input)
         form.addRow("送信先URL", self.ai_reply_endpoint_url_input)
         form.addRow("APIキー", self.ai_reply_api_key_input)
         form.addRow("timeout秒", self.ai_reply_timeout_input)
-        note = QLabel("一致したコメントをJSONで送る。AI生成とニコ生投稿は送信先側で処理する。")
+        note = QLabel("キーワード一致、または接頭辞で始まるコメントをJSONで送る。session_idも保存して同じ相手には同じセッションを渡す。")
         note.setWordWrap(True)
         layout = QVBoxLayout()
         layout.addLayout(form)
@@ -288,7 +291,8 @@ class BasicSettingsTab(QWidget):
             self.list_row_gap_input.setValue(int(config.list_row_gap))
             self.list_max_rows_input.setValue(int(config.list_max_rows))
             self.ai_reply_enabled_input.setChecked(bool(config.ai_reply_enabled))
-            self.ai_reply_keywords_input.setPlainText(config.ai_reply_keywords)
+            self.ai_reply_rules_input.setPlainText(config.ai_reply_rules or config.ai_reply_keywords)
+            self.ai_reply_trigger_prefix_input.setText(config.ai_reply_trigger_prefix)
             self.ai_reply_endpoint_url_input.setText(config.ai_reply_endpoint_url)
             self.ai_reply_api_key_input.setText(config.ai_reply_api_key)
             self.ai_reply_timeout_input.setValue(float(config.ai_reply_timeout_seconds))
@@ -381,7 +385,9 @@ class BasicSettingsTab(QWidget):
                 "list_row_gap": int(self.list_row_gap_input.value()),
                 "list_max_rows": int(self.list_max_rows_input.value()),
                 "ai_reply_enabled": self.ai_reply_enabled_input.isChecked(),
-                "ai_reply_keywords": self.ai_reply_keywords_input.toPlainText().strip(),
+                "ai_reply_keywords": self.ai_reply_rules_input.toPlainText().strip(),
+                "ai_reply_rules": self.ai_reply_rules_input.toPlainText().strip(),
+                "ai_reply_trigger_prefix": self.ai_reply_trigger_prefix_input.text().strip() or ">AI",
                 "ai_reply_endpoint_url": self.ai_reply_endpoint_url_input.text().strip(),
                 "ai_reply_api_key": self.ai_reply_api_key_input.text(),
                 "ai_reply_timeout_seconds": float(self.ai_reply_timeout_input.value()),

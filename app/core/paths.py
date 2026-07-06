@@ -13,6 +13,7 @@ class AppPaths:
     config: Path
     ui_state: Path
     database: Path
+    ai_reply_sessions: Path
 
     def ensure_runtime_dirs(self) -> None:
         self.output.mkdir(parents=True, exist_ok=True)
@@ -30,6 +31,7 @@ def resolve_app_paths() -> AppPaths:
         config=data / "config.json",
         ui_state=data / "ui_state.json",
         database=data / "simple_comment_viewer.sqlite3",
+        ai_reply_sessions=data / "ai_reply_sessions.json",
     )
 
 
