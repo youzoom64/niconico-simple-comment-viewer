@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 
 from app.core.config import AppConfig
@@ -133,26 +135,44 @@ def default_chrome_profile_dir() -> str:
 
 def apply_tags_with_dom(driver: webdriver.Chrome, operation: TagOperation, *, timeout_seconds: float) -> None:
     deadline = time.monotonic() + timeout_seconds
-    script = """
-const buttons = Array.from(document.querySelectorAll('button, [role="button"], a'));
-const edit = buttons.find(el => /タグ.*(編集|設定)|編集.*タグ/.test((el.innerText || el.textContent || '').trim()));
-if (edit) edit.click();
-return Boolean(edit);
-"""
-    driver.execute_script(script)
+    ensure_tag_panel_open(driver)
     time.sleep(0.5)
-    while time.monotonic() < deadline:
-        if driver.execute_script(set_tags_script(), operation.clear_all, list(operation.remove_tags), list(operation.add_tags)):
-            return
-        time.sleep(0.5)
-    raise RuntimeError("タグ編集UIが見つからない、または保存できない")
+    try:
+        while time.monotonic() < deadline:
+            if driver.execute_script(remove_tags_script(), operation.clear_all, list(operation.remove_tags)):
+                add_tags_with_keys(driver, operation.add_tags)
+                if driver.execute_script(save_tags_script()):
+                    return
+            time.sleep(0.5)
+        raise RuntimeError("タグ編集UIが見つからない、または保存できない")
+    finally:
+        close_tag_panel(driver)
 
 
-def set_tags_script() -> str:
+def ensure_tag_panel_open(driver: webdriver.Chrome) -> None:
+    opened = driver.execute_script(
+        """
+const textOf = el => (el.innerText || el.textContent || el.value || '').trim();
+const input = Array.from(document.querySelectorAll('input[type="text"], textarea, [contenteditable="true"]'))
+  .find(el => /追加するタグ|タグ|tag/i.test([el.placeholder, el.getAttribute('aria-label'), el.name, el.id].filter(Boolean).join(' ')));
+if (input) return true;
+const buttons = Array.from(document.querySelectorAll('button, [role="button"], a'));
+const edit = buttons.find(el => textOf(el) === 'タグ編集' || /タグ.*(編集|設定)|編集.*タグ/.test(textOf(el)));
+if (edit) {
+  edit.click();
+  return true;
+}
+return false;
+"""
+    )
+    if not opened:
+        raise RuntimeError("タグ編集ボタンが見つからない")
+
+
+def remove_tags_script() -> str:
     return """
 const clearAll = arguments[0];
 const removeTags = arguments[1];
-const addTags = arguments[2];
 const textOf = el => (el.innerText || el.textContent || el.value || '').trim();
 const currentRows = () => Array.from(document.querySelectorAll('button,[role="button"]'))
   .filter(el => (el.getAttribute('aria-label') || '') === '削除する')
@@ -167,22 +187,25 @@ const currentRows = () => Array.from(document.querySelectorAll('button,[role="bu
 for (const row of currentRows()) {
   if (clearAll || removeTags.includes(row.text)) row.button.click();
 }
-const input = Array.from(document.querySelectorAll('input[type="text"], textarea, [contenteditable="true"]'))
-  .find(el => /追加するタグ|タグ|tag/i.test([el.placeholder, el.getAttribute('aria-label'), el.name, el.id].filter(Boolean).join(' ')));
-if (addTags.length && !input) return false;
-for (const tag of addTags) {
-  input.focus();
-  if (input.isContentEditable) {
-    input.innerText = tag;
-    input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText', data: tag}));
-  } else {
-    input.value = tag;
-    input.dispatchEvent(new Event('input', {bubbles: true}));
-    input.dispatchEvent(new Event('change', {bubbles: true}));
-  }
-  input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
-  input.dispatchEvent(new KeyboardEvent('keyup', {key: 'Enter', bubbles: true}));
-}
+return true;
+"""
+
+
+def add_tags_with_keys(driver: webdriver.Chrome, tags: tuple[str, ...]) -> None:
+    for tag in tags:
+        input_el = driver.find_element(By.CSS_SELECTOR, 'input[placeholder="追加するタグを入力"]')
+        input_el.click()
+        input_el.send_keys(Keys.CONTROL, "a")
+        input_el.send_keys(Keys.BACKSPACE)
+        input_el.send_keys(tag)
+        time.sleep(0.2)
+        driver.find_element(By.CSS_SELECTOR, "button.register-button").click()
+        time.sleep(0.8)
+
+
+def save_tags_script() -> str:
+    return """
+const textOf = el => (el.innerText || el.textContent || el.value || '').trim();
 const buttons = Array.from(document.querySelectorAll('button, [role="button"], a'));
 const save = buttons.find(el => /(設定を番組に反映する|保存|登録|変更|完了|更新)/.test(textOf(el)));
 if (save) {
@@ -191,3 +214,13 @@ if (save) {
 }
 return false;
 """
+
+
+def close_tag_panel(driver: webdriver.Chrome) -> None:
+    driver.execute_script(
+        """
+const textOf = el => (el.innerText || el.textContent || el.value || '').trim();
+const close = Array.from(document.querySelectorAll('button,[role="button"],a')).find(el => textOf(el) === '閉じる');
+if (close) close.click();
+"""
+    )
