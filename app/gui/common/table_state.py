@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import QByteArray, Qt
+from PyQt6.QtCore import QByteArray, QSignalBlocker, Qt
 from PyQt6.QtWidgets import QAbstractItemView, QHeaderView, QStyledItemDelegate, QStyleOptionViewItem, QTableWidget
 
 
@@ -67,8 +67,12 @@ def export_table_state(table: QTableWidget) -> dict[str, Any]:
 
 
 def restore_table_state(table: QTableWidget, state: dict[str, Any]) -> None:
-    apply_column_widths(table, state.get("widths"))
-    apply_header_state(table, state.get("header"))
+    blocker = QSignalBlocker(table.horizontalHeader())
+    try:
+        apply_column_widths(table, state.get("widths"))
+        apply_header_state(table, state.get("header"))
+    finally:
+        del blocker
 
 
 def restore_persistent_table_state(table: QTableWidget, ui_state_store: Any, table_key: str) -> None:
