@@ -56,6 +56,14 @@ class AppConfig:
     obs_browser_url: str = "http://127.0.0.1:8792/"
     obs_browser_width: int = 1920
     obs_browser_height: int = 1080
+    obs_skin_source_name: str = "skin"
+    obs_skin_url: str = "http://127.0.0.1:8792/"
+    obs_skin_width: int = 1920
+    obs_skin_height: int = 1080
+    obs_list_source_name: str = "リスト"
+    obs_list_url: str = "http://127.0.0.1:8792/list"
+    obs_list_width: int = 1920
+    obs_list_height: int = 1080
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -111,6 +119,14 @@ class AppConfig:
             "obs_browser_url": str(data.get("obs_browser_url") or "http://127.0.0.1:8792/"),
             "obs_browser_width": int(data.get("obs_browser_width") or 1920),
             "obs_browser_height": int(data.get("obs_browser_height") or 1080),
+            "obs_skin_source_name": str(data.get("obs_skin_source_name") or "skin"),
+            "obs_skin_url": str(data.get("obs_skin_url") or "http://127.0.0.1:8792/"),
+            "obs_skin_width": int(data.get("obs_skin_width") or 1920),
+            "obs_skin_height": int(data.get("obs_skin_height") or 1080),
+            "obs_list_source_name": str(data.get("obs_list_source_name") or "リスト"),
+            "obs_list_url": str(data.get("obs_list_url") or "http://127.0.0.1:8792/list"),
+            "obs_list_width": int(data.get("obs_list_width") or 1920),
+            "obs_list_height": int(data.get("obs_list_height") or 1080),
         }
         extra = {key: value for key, value in data.items() if key not in known}
         return cls(**known, extra=extra)
@@ -167,5 +183,13 @@ class AppConfig:
             "obs_browser_url": self.obs_browser_url,
             "obs_browser_width": self.obs_browser_width,
             "obs_browser_height": self.obs_browser_height,
+            "obs_skin_source_name": self.obs_skin_source_name,
+            "obs_skin_url": self.obs_skin_url,
+            "obs_skin_width": self.obs_skin_width,
+            "obs_skin_height": self.obs_skin_height,
+            "obs_list_source_name": self.obs_list_source_name,
+            "obs_list_url": self.obs_list_url,
+            "obs_list_width": self.obs_list_width,
+            "obs_list_height": self.obs_list_height,
             **self.extra,
         }
