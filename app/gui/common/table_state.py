@@ -16,7 +16,7 @@ def configure_table_header(table: QTableWidget, widths: list[int] | None = None,
     table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     table.setWordWrap(False)
-    table.setTextElideMode(Qt.TextElideMode.ElideRight)
+    table.setTextElideMode(Qt.TextElideMode.ElideNone)
     if widths is not None:
         apply_column_widths(table, widths)
     else:
