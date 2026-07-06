@@ -4,7 +4,7 @@ import asyncio
 from typing import Any, Callable
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
 from app.core.config import AppConfig
 from app.gui.common.combo_box import NoWheelComboBox
@@ -48,6 +48,8 @@ class ObsSourceRow(QWidget):
         self.remove_button = QPushButton("削除")
         self.set_source(str(data.get("source") or ""))
         self._build_layout()
+        self.setFixedHeight(44)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.apply_button.clicked.connect(lambda: self.apply_requested.emit(("apply", self)))
         self.reload_button.clicked.connect(lambda: self.apply_requested.emit(("refresh", self)))
         self.remove_button.clicked.connect(lambda: self.remove_requested.emit(self))
@@ -123,6 +125,8 @@ class ObsControlTab(QWidget):
         self.rows_widget = QWidget()
         self.rows_layout = QVBoxLayout()
         self.rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.rows_layout.setSpacing(4)
+        self.rows_layout.addStretch(1)
         self.rows_widget.setLayout(self.rows_layout)
         self.save_button = QPushButton("保存")
         self.test_button = QPushButton("接続テスト")
@@ -187,7 +191,7 @@ class ObsControlTab(QWidget):
         row.remove_requested.connect(self.remove_row)
         row.apply_requested.connect(self.handle_row_action)
         self.rows.append(row)
-        self.rows_layout.addWidget(row)
+        self.rows_layout.insertWidget(max(0, self.rows_layout.count() - 1), row)
 
     def remove_row(self, row: ObsSourceRow) -> None:
         if row in self.rows:
