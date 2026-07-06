@@ -65,6 +65,7 @@ from app.services.sequence.comment_numbering import CommentNumberIssuer
 from app.services.speech_synthesis.fifo_pipeline import VoicevoxFifoPipeline
 from app.services.speech_synthesis.job_factory import build_voicevox_submission
 from app.services.speech_synthesis.voicevox_engine_adapter import build_voicevox_synthesizer
+from app.services.tag_change import change_live_tags, decide_tag_change
 from app.settings.ui_state import UiStateStore
 from app.settings.store import JsonSettingsStore
 from app.voicevox.speed_rules import resolve_linear_speed_scale
@@ -142,6 +143,26 @@ class CommentPostWorker(QObject):
             self.failed.emit(f"{type(exc).__name__}: {exc}")
 
 
+class TagChangeWorker(QObject):
+    finished = pyqtSignal(str, object)
+    failed = pyqtSignal(str, str)
+
+    def __init__(self, lv: str, keyword: str, tags: tuple[str, ...], headless: bool, timeout_seconds: float) -> None:
+        super().__init__()
+        self.lv = lv
+        self.keyword = keyword
+        self.tags = tags
+        self.headless = headless
+        self.timeout_seconds = timeout_seconds
+
+    def run(self) -> None:
+        try:
+            change_live_tags(self.lv, self.tags, headless=self.headless, timeout_seconds=self.timeout_seconds)
+            self.finished.emit(self.keyword, self.tags)
+        except Exception as exc:
+            self.failed.emit(self.keyword, f"{type(exc).__name__}: {exc}")
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -184,6 +205,7 @@ class MainWindow(QMainWindow):
         self.comment_send_button.setEnabled(False)
         self.comment_post_thread: QThread | None = None
         self.comment_post_worker: CommentPostWorker | None = None
+        self.tag_change_threads: list[QThread] = []
 
         top = QHBoxLayout()
         top.addWidget(QLabel("放送"))
@@ -478,6 +500,7 @@ class MainWindow(QMainWindow):
         ai_decision = self.ai_reply_hook.maybe_submit(lv=self.current_lv, row=voice_row or row, display_name=display_name)
         if ai_decision.matched:
             self.append_log("INFO", f"AI返信フック検出: keyword={ai_decision.keyword} no={(voice_row or row).get('no') or ''}")
+        self.maybe_start_tag_change(voice_row or row)
         if voice_row is not None:
             self.enqueue_voicevox_for_row(voice_row)
         if row_index == 0 or (row_index + 1) % 100 == 0:
@@ -508,6 +531,43 @@ class MainWindow(QMainWindow):
             f"コメント設定タグ反映: user={result.account_id} {result.command.describe() if result.command else ''}",
         )
         return result.readable_row
+
+    def maybe_start_tag_change(self, row: dict[str, Any]) -> None:
+        decision = decide_tag_change(self.app_config, row)
+        if not decision.matched:
+            return
+        if not self.current_lv:
+            self.append_log("WARN", "タグ変更スキップ: lvなし")
+            return
+        thread = QThread()
+        worker = TagChangeWorker(
+            self.current_lv,
+            decision.keyword,
+            decision.tags,
+            self.app_config.tag_change_headless,
+            self.app_config.tag_change_timeout_seconds,
+        )
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self.tag_change_finished)
+        worker.failed.connect(self.tag_change_failed)
+        worker.finished.connect(lambda *_args, t=thread: self.cleanup_tag_change_thread(t))
+        worker.failed.connect(lambda *_args, t=thread: self.cleanup_tag_change_thread(t))
+        self.tag_change_threads.append(thread)
+        self.append_log("INFO", f"タグ変更開始: keyword={decision.keyword} tags={','.join(decision.tags)}")
+        thread.start()
+
+    def tag_change_finished(self, keyword: str, tags: tuple[str, ...]) -> None:
+        self.append_log("INFO", f"タグ変更完了: keyword={keyword} tags={','.join(tags)}")
+
+    def tag_change_failed(self, keyword: str, message: str) -> None:
+        self.append_log("ERROR", f"タグ変更失敗: keyword={keyword} {message}")
+
+    def cleanup_tag_change_thread(self, thread: QThread) -> None:
+        thread.quit()
+        thread.wait(3000)
+        if thread in self.tag_change_threads:
+            self.tag_change_threads.remove(thread)
 
     def enqueue_voicevox_for_row(self, row: dict[str, Any]) -> None:
         comment_no = self.comment_numbers.issue()
@@ -834,6 +894,9 @@ class MainWindow(QMainWindow):
         if self.comment_post_thread:
             self.comment_post_thread.quit()
             self.comment_post_thread.wait(3000)
+        for thread in list(self.tag_change_threads):
+            thread.quit()
+            thread.wait(3000)
         self.voicevox_pipeline.stop()
         self.overlay_server.stop()
         super().closeEvent(event)

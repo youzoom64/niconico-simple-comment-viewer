@@ -45,6 +45,10 @@ class AppConfig:
     ai_reply_timeout_seconds: float = 10.0
     ai_reply_model: str = ""
     ai_reply_effort: str = ""
+    tag_change_enabled: bool = False
+    tag_change_rules: str = ""
+    tag_change_headless: bool = True
+    tag_change_timeout_seconds: float = 30.0
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -89,6 +93,10 @@ class AppConfig:
             "ai_reply_timeout_seconds": float(data.get("ai_reply_timeout_seconds") or 300.0),
             "ai_reply_model": str(data.get("ai_reply_model") or ""),
             "ai_reply_effort": str(data.get("ai_reply_effort") or ""),
+            "tag_change_enabled": bool(data.get("tag_change_enabled", False)),
+            "tag_change_rules": str(data.get("tag_change_rules") or ""),
+            "tag_change_headless": bool(data.get("tag_change_headless", True)),
+            "tag_change_timeout_seconds": float(data.get("tag_change_timeout_seconds") or 30.0),
         }
         extra = {key: value for key, value in data.items() if key not in known}
         return cls(**known, extra=extra)
@@ -134,5 +142,9 @@ class AppConfig:
             "ai_reply_timeout_seconds": self.ai_reply_timeout_seconds,
             "ai_reply_model": self.ai_reply_model,
             "ai_reply_effort": self.ai_reply_effort,
+            "tag_change_enabled": self.tag_change_enabled,
+            "tag_change_rules": self.tag_change_rules,
+            "tag_change_headless": self.tag_change_headless,
+            "tag_change_timeout_seconds": self.tag_change_timeout_seconds,
             **self.extra,
         }

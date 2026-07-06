@@ -96,6 +96,14 @@ class BasicSettingsTab(QWidget):
         self.ai_reply_model_input.setPlaceholderText("空ならCodex既定")
         self.ai_reply_effort_input = QLineEdit()
         self.ai_reply_effort_input.setPlaceholderText("例: low / medium / high。空ならCodex既定")
+        self.tag_change_enabled_input = QCheckBox("コメントでタグ変更する")
+        self.tag_change_rules_input = QTextEdit()
+        self.tag_change_rules_input.setPlaceholderText("1行1ルール。例: タグ変えて=>雑談,ゲーム,初見歓迎")
+        self.tag_change_rules_input.setFixedHeight(120)
+        self.tag_change_headless_input = QCheckBox("Seleniumを非表示で実行")
+        self.tag_change_timeout_input = QDoubleSpinBox()
+        self.tag_change_timeout_input.setRange(10.0, 180.0)
+        self.tag_change_timeout_input.setSingleStep(5.0)
         self.save_button = QPushButton("保存")
         self.status_label = QLabel("")
         self.list_auto_save_timer = QTimer(self)
@@ -112,6 +120,7 @@ class BasicSettingsTab(QWidget):
         tabs.addTab(self._build_speed_tab(), "再生速度")
         tabs.addTab(self._build_list_overlay_tab(), "通常リスト")
         tabs.addTab(self._build_ai_reply_tab(), "AI返信")
+        tabs.addTab(self._build_tag_change_tab(), "タグ変更")
         buttons = QHBoxLayout()
         buttons.addWidget(self.save_button)
         buttons.addWidget(self.status_label, 1)
@@ -154,6 +163,22 @@ class BasicSettingsTab(QWidget):
         form.addRow("待機1件時の倍率", self.speed_first_queue_input)
         form.addRow("最大倍率", self.speed_max_input)
         note = QLabel("読む直前のキュー件数で倍率を決める。例: 1件時1.1なら 1.1 / 1.2 / 1.3")
+        note.setWordWrap(True)
+        layout = QVBoxLayout()
+        layout.addLayout(form)
+        layout.addWidget(note)
+        layout.addStretch(1)
+        widget = QWidget()
+        widget.setLayout(layout)
+        return widget
+
+    def _build_tag_change_tab(self) -> QWidget:
+        form = QFormLayout()
+        form.addRow("", self.tag_change_enabled_input)
+        form.addRow("タグ変更ルール", self.tag_change_rules_input)
+        form.addRow("", self.tag_change_headless_input)
+        form.addRow("Selenium timeout秒", self.tag_change_timeout_input)
+        note = QLabel("コメントにキーワードが含まれたら、Seleniumで放送ページを開いてタグ編集UIを操作する。")
         note.setWordWrap(True)
         layout = QVBoxLayout()
         layout.addLayout(form)
@@ -296,6 +321,10 @@ class BasicSettingsTab(QWidget):
             self.ai_reply_timeout_input.setValue(float(config.ai_reply_timeout_seconds))
             self.ai_reply_model_input.setText(config.ai_reply_model)
             self.ai_reply_effort_input.setText(config.ai_reply_effort)
+            self.tag_change_enabled_input.setChecked(bool(config.tag_change_enabled))
+            self.tag_change_rules_input.setPlainText(config.tag_change_rules)
+            self.tag_change_headless_input.setChecked(bool(config.tag_change_headless))
+            self.tag_change_timeout_input.setValue(float(config.tag_change_timeout_seconds))
         finally:
             self.loading_config = False
 
@@ -391,6 +420,10 @@ class BasicSettingsTab(QWidget):
                 "ai_reply_timeout_seconds": float(self.ai_reply_timeout_input.value()),
                 "ai_reply_model": self.ai_reply_model_input.text().strip(),
                 "ai_reply_effort": self.ai_reply_effort_input.text().strip(),
+                "tag_change_enabled": self.tag_change_enabled_input.isChecked(),
+                "tag_change_rules": self.tag_change_rules_input.toPlainText().strip(),
+                "tag_change_headless": self.tag_change_headless_input.isChecked(),
+                "tag_change_timeout_seconds": float(self.tag_change_timeout_input.value()),
             }
         )
         self.config = AppConfig.from_dict(data)
