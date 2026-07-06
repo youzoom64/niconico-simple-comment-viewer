@@ -31,7 +31,7 @@ def apply_comment_setting_command_to_profile(
     if match is None:
         return CommentSettingApplyResult(matched=False, saved=False, readable_row=row)
 
-    readable_row = row_with_readable_text(row, match.readable_text)
+    readable_row = row_with_readable_text(row, match.readable_text, allow_empty=bool(match.command.display_name))
     account_id = account_id_from_row(row)
     if not account_id:
         return CommentSettingApplyResult(
@@ -44,10 +44,14 @@ def apply_comment_setting_command_to_profile(
 
     existing = get_live_user_profile(conn, account_id)
     command = match.command
+    existing_display_name = str(row_value(existing, "display_name", "") or display_name_from_row(row))
+    display_name_locked = bool(row_value(existing, "display_name_locked", 0))
+    next_display_name = existing_display_name if display_name_locked else (command.display_name or existing_display_name)
     profile = {
         "enabled": True,
         "user_id": account_id,
-        "display_name": command.display_name or str(row_value(existing, "display_name", "") or display_name_from_row(row)),
+        "display_name": next_display_name,
+        "display_name_locked": display_name_locked,
         "skin_path": command.skin_path if command.skin_id is not None else str(row_value(existing, "skin_path", "") or ""),
         "skin_width": int(row_value(existing, "skin_width", default_skin_width) or default_skin_width),
         "skin_height": int(row_value(existing, "skin_height", default_skin_height) or default_skin_height),
@@ -67,9 +71,9 @@ def apply_comment_setting_command_to_profile(
     )
 
 
-def row_with_readable_text(row: dict[str, Any], readable_text: str) -> dict[str, Any] | None:
+def row_with_readable_text(row: dict[str, Any], readable_text: str, *, allow_empty: bool = False) -> dict[str, Any] | None:
     text = str(readable_text or "").strip()
-    if not text:
+    if not text and not allow_empty:
         return None
     filtered = dict(row)
     filtered["content"] = text

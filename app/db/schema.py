@@ -116,6 +116,7 @@ def ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -
 def ensure_live_user_profile_columns(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "live_user_profiles", "skin_width", "INTEGER")
     ensure_column(conn, "live_user_profiles", "skin_height", "INTEGER")
+    ensure_column(conn, "live_user_profiles", "display_name_locked", "INTEGER NOT NULL DEFAULT 0")
 
 
 def seed_default_rules(conn: sqlite3.Connection) -> None:

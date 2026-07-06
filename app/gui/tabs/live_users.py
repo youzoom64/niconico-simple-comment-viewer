@@ -22,6 +22,7 @@ from app.db.schema import initialize_database
 from app.gui.common.context_menu import install_table_copy_menu
 from app.gui.common.scroll_guard import capture_scroll, restore_scroll
 from app.gui.common.table_state import configure_table_header
+from app.gui.common.font_combo import FontFamilyCombo
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
 from app.settings.store import JsonSettingsStore
 
@@ -31,6 +32,7 @@ class LiveUsersTab(QWidget):
         ("enabled", "有効"),
         ("user_id", "アカウントID"),
         ("display_name", "表示名"),
+        ("display_name_locked", "名前ロック"),
         ("skin_path", "スキン"),
         ("skin_width", "スキン幅"),
         ("skin_height", "スキン高"),
@@ -51,6 +53,7 @@ class LiveUsersTab(QWidget):
         self.user_id_input = QLineEdit()
         self.user_id_input.setPlaceholderText("アカウントID / ハッシュID")
         self.display_name_input = QLineEdit()
+        self.display_name_locked_input = QCheckBox("表示名をロック")
         self.skin_path_input = QLineEdit()
         self.skin_width_input = QSpinBox()
         self.skin_width_input.setRange(1, 4096)
@@ -58,7 +61,7 @@ class LiveUsersTab(QWidget):
         self.skin_height_input = QSpinBox()
         self.skin_height_input.setRange(1, 512)
         self.skin_height_input.setValue(32)
-        self.font_family_input = QLineEdit()
+        self.font_family_input = FontFamilyCombo()
         self.font_size_input = QSpinBox()
         self.font_size_input.setRange(6, 128)
         self.font_size_input.setValue(32)
@@ -72,7 +75,7 @@ class LiveUsersTab(QWidget):
         self.skin_browse_button = QPushButton("参照")
         self.table = QTableWidget(0, len(self.columns))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
-        configure_table_header(self.table, [60, 160, 160, 260, 90, 90, 160, 80, 90, 160, 160])
+        configure_table_header(self.table, [60, 160, 160, 100, 260, 90, 90, 160, 80, 90, 160, 160])
         install_table_copy_menu(self.table, self.row_data_for_menu)
         self._build_layout()
         self._connect()
@@ -84,6 +87,7 @@ class LiveUsersTab(QWidget):
         form.addRow("", self.enabled_input)
         form.addRow("アカウントID", self.user_id_input)
         form.addRow("表示名", self.display_name_input)
+        form.addRow("", self.display_name_locked_input)
         skin_row = QHBoxLayout()
         skin_row.addWidget(self.skin_path_input, 1)
         skin_row.addWidget(self.skin_browse_button)
@@ -139,10 +143,11 @@ class LiveUsersTab(QWidget):
             "enabled": self.enabled_input.isChecked(),
             "user_id": self.user_id_input.text().strip(),
             "display_name": self.display_name_input.text().strip(),
+            "display_name_locked": self.display_name_locked_input.isChecked(),
             "skin_path": self.skin_path_input.text().strip(),
             "skin_width": self.skin_width_input.value(),
             "skin_height": self.skin_height_input.value(),
-            "font_family": self.font_family_input.text().strip(),
+            "font_family": self.font_family_input.current_font_family(),
             "font_size": self.font_size_input.value(),
             "font_color": self.font_color_input.text().strip(),
             "voicevox_speaker": self.voicevox_speaker_input.text().strip(),
@@ -172,8 +177,8 @@ class LiveUsersTab(QWidget):
         self.table.setRowCount(len(self.rows))
         for row_index, row in enumerate(self.rows):
             for column_index, (key, _label) in enumerate(self.columns):
-                value = "ON" if key == "enabled" and row.get(key) else row.get(key, "")
-                if key == "enabled" and not row.get(key):
+                value = "ON" if key in {"enabled", "display_name_locked"} and row.get(key) else row.get(key, "")
+                if key in {"enabled", "display_name_locked"} and not row.get(key):
                     value = "OFF"
                 self.table.setItem(row_index, column_index, QTableWidgetItem(str(value or "")))
         restore_scroll(self.table, scroll_state, keep_bottom=False)
@@ -185,10 +190,11 @@ class LiveUsersTab(QWidget):
         self.enabled_input.setChecked(bool(row.get("enabled")))
         self.user_id_input.setText(str(row.get("user_id") or ""))
         self.display_name_input.setText(str(row.get("display_name") or ""))
+        self.display_name_locked_input.setChecked(bool(row.get("display_name_locked")))
         self.skin_path_input.setText(str(row.get("skin_path") or ""))
         self.skin_width_input.setValue(int(row.get("skin_width") or 512))
         self.skin_height_input.setValue(int(row.get("skin_height") or 32))
-        self.font_family_input.setText(str(row.get("font_family") or ""))
+        self.font_family_input.set_current_font_family(str(row.get("font_family") or ""))
         self.font_size_input.setValue(int(row.get("font_size") or 32))
         self.font_color_input.setText(str(row.get("font_color") or ""))
         self.voicevox_speaker_input.setText(str(row.get("voicevox_speaker") or ""))

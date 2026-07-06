@@ -58,6 +58,9 @@ def resolve_style_id(voicevox_style: str, voicevox_speaker: str) -> int | None:
 
 
 def build_comment_event(row: dict[str, Any], plan: EventProcessingPlan, comment_no: int) -> CommentEvent:
+    profile_name = ""
+    if plan.live_user_profile and plan.live_user_profile.enabled:
+        profile_name = plan.live_user_profile.display_name
     return CommentEvent(
         event_id=str(row.get("message_id") or row.get("no") or comment_no),
         comment_no=comment_no,
@@ -65,7 +68,7 @@ def build_comment_event(row: dict[str, Any], plan: EventProcessingPlan, comment_
         text=str(plan.event.get("content") or ""),
         received_at=parse_received_at(plan.event),
         user_id=str(plan.event.get("user_id") or ""),
-        display_name=str(plan.event.get("display_name") or plan.event.get("user_name") or ""),
+        display_name=str(profile_name or plan.event.get("display_name") or plan.event.get("user_name") or ""),
         raw_payload=dict(row),
     )
 

@@ -147,13 +147,17 @@ class OverlayRequestHandler(BaseHTTPRequestHandler):
 
 def packet_to_overlay_event(event_id: int, packet: RenderPacket) -> dict[str, Any]:
     profile = packet.render_profile
+    display_name = str(packet.comment.display_name or "").strip()
+    display_text = str(packet.text_for_display or "")
+    if display_name:
+        display_text = f"{display_name}:{display_text}"
     return {
         "id": event_id,
         "comment_no": packet.comment.comment_no,
         "event_kind": packet.comment.event_kind.value,
         "user_id": packet.comment.user_id,
-        "display_name": packet.comment.display_name,
-        "text": packet.text_for_display,
+        "display_name": display_name,
+        "text": display_text,
         "skin_url": overlay_skin_url(profile.skin_path),
         "skin_width": max(1, int(profile.skin_width)),
         "skin_height": max(1, int(profile.skin_height)),
@@ -291,7 +295,11 @@ function cssPx(value, fallback) {
 }
 
 function bumpExisting(step) {
-  for (const node of Array.from(root.querySelectorAll(".obs-comment"))) {
+  bumpNodes(Array.from(root.querySelectorAll(".obs-comment")), step);
+}
+
+function bumpNodes(nodes, step) {
+  for (const node of nodes) {
     const current = Number(node.dataset.bottom || "0");
     const next = current + step;
     node.dataset.bottom = String(next);
@@ -317,8 +325,7 @@ function addEvent(event) {
   const skinHeight = cssPx(event.skin_height, 32);
   const laneStep = skinHeight;
   const fontSize = Math.min(cssPx(event.font_size, 20), Math.max(10, Math.floor(skinHeight * 0.72)));
-  bumpExisting(laneStep);
-  resetAutoBump(laneStep);
+  const existingNodes = Array.from(root.querySelectorAll(".obs-comment"));
 
   const node = document.createElement("div");
   node.className = "obs-comment";
@@ -347,7 +354,15 @@ function addEvent(event) {
   text.textContent = event.text || "";
   node.appendChild(text);
   root.appendChild(node);
-  requestAnimationFrame(() => node.classList.add("show"));
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      node.classList.add("show");
+      setTimeout(() => {
+        bumpNodes(existingNodes, laneStep);
+        resetAutoBump(laneStep);
+      }, 120);
+    });
+  });
 }
 
 async function poll() {

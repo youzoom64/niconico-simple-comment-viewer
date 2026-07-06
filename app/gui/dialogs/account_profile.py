@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from app.db.connection import database_session
 from app.db.repositories.profiles import get_live_user_profile, upsert_live_user_profile
 from app.db.schema import initialize_database
+from app.gui.common.font_combo import FontFamilyCombo
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
 from app.settings.store import JsonSettingsStore
 
@@ -37,6 +38,7 @@ class AccountProfileDialog(QDialog):
         self.enabled_input.setChecked(True)
         self.account_id_label = QLabel(self.account_id)
         self.display_name_input = QLineEdit(self.initial_display_name)
+        self.display_name_locked_input = QCheckBox("表示名をロック")
         self.skin_path_input = QLineEdit()
         self.skin_browse_button = QPushButton("参照")
         self.skin_width_input = QSpinBox()
@@ -45,8 +47,7 @@ class AccountProfileDialog(QDialog):
         self.skin_height_input = QSpinBox()
         self.skin_height_input.setRange(1, 512)
         self.skin_height_input.setValue(32)
-        self.font_family_input = QLineEdit()
-        self.font_family_input.setPlaceholderText("例: Yu Gothic UI / Reggae One")
+        self.font_family_input = FontFamilyCombo()
         self.font_size_input = QSpinBox()
         self.font_size_input.setRange(6, 128)
         self.font_size_input.setValue(32)
@@ -68,6 +69,7 @@ class AccountProfileDialog(QDialog):
         form.addRow("", self.enabled_input)
         form.addRow("アカウントID", self.account_id_label)
         form.addRow("表示名", self.display_name_input)
+        form.addRow("", self.display_name_locked_input)
         skin_row = QHBoxLayout()
         skin_row.addWidget(self.skin_path_input, 1)
         skin_row.addWidget(self.skin_browse_button)
@@ -124,10 +126,11 @@ class AccountProfileDialog(QDialog):
             return
         self.enabled_input.setChecked(bool(row_value(row, "enabled", 1)))
         self.display_name_input.setText(str(row_value(row, "display_name", self.initial_display_name) or ""))
+        self.display_name_locked_input.setChecked(bool(row_value(row, "display_name_locked", 0)))
         self.skin_path_input.setText(str(row_value(row, "skin_path", "") or ""))
         self.skin_width_input.setValue(int(row_value(row, "skin_width", 512) or 512))
         self.skin_height_input.setValue(int(row_value(row, "skin_height", 32) or 32))
-        self.font_family_input.setText(str(row_value(row, "font_family", "") or ""))
+        self.font_family_input.set_current_font_family(str(row_value(row, "font_family", "") or ""))
         self.font_size_input.setValue(int(row_value(row, "font_size", 32) or 32))
         self.font_color_input.setText(str(row_value(row, "font_color", "#ffffff") or "#ffffff"))
         self.voicevox_speaker_input.setText(str(row_value(row, "voicevox_speaker", "") or ""))
@@ -138,10 +141,11 @@ class AccountProfileDialog(QDialog):
             "enabled": self.enabled_input.isChecked(),
             "user_id": self.account_id,
             "display_name": self.display_name_input.text().strip(),
+            "display_name_locked": self.display_name_locked_input.isChecked(),
             "skin_path": self.skin_path_input.text().strip(),
             "skin_width": self.skin_width_input.value(),
             "skin_height": self.skin_height_input.value(),
-            "font_family": self.font_family_input.text().strip(),
+            "font_family": self.font_family_input.current_font_family(),
             "font_size": self.font_size_input.value(),
             "font_color": self.font_color_input.text().strip(),
             "voicevox_speaker": self.voicevox_speaker_input.text().strip(),

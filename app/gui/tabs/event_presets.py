@@ -44,6 +44,27 @@ DEFAULT_EVENT_KINDS = [
     "unknown",
 ]
 
+DEFAULT_EVENT_TEMPLATES = {
+    "chat": "{content}",
+    "anonymous_184_chat": "{content}",
+    "named_chat": "{name}: {content}",
+    "operator_chat": "【運営】{content}",
+    "owner_chat": "【配信者】{content}",
+    "overflowed_chat": "{content}",
+    "forwarded_chat": "{content}",
+    "nicoad": "【ニコニ広告】{message}",
+    "gift": "【ギフト】{message}",
+    "visitor": "【来場】{message}",
+    "game_update": "【ゲーム】{message}",
+    "simple_notification": "【通知】{message}",
+    "simple_notification_v2": "【通知】{message}",
+    "tag_updated": "【タグ更新】{message}",
+    "moderator_updated": "【モデレーター更新】{message}",
+    "ssng_updated": "【SSNG更新】{message}",
+    "akashic_message_event": "【Akashic】{message}",
+    "unknown": "{content}",
+}
+
 
 class EventPresetsTab(QWidget):
     columns = [
@@ -68,6 +89,7 @@ class EventPresetsTab(QWidget):
         self.template_input.setFixedHeight(88)
         self.save_button = QPushButton("保存")
         self.delete_button = QPushButton("削除")
+        self.seed_all_button = QPushButton("全イベント初期設定")
         self.reload_button = QPushButton("再読込")
         self.table = QTableWidget(0, len(self.columns))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
@@ -98,6 +120,7 @@ class EventPresetsTab(QWidget):
         buttons = QHBoxLayout()
         buttons.addWidget(self.save_button)
         buttons.addWidget(self.delete_button)
+        buttons.addWidget(self.seed_all_button)
         buttons.addWidget(self.reload_button)
         buttons.addStretch(1)
         layout = QVBoxLayout()
@@ -109,6 +132,7 @@ class EventPresetsTab(QWidget):
     def _connect(self) -> None:
         self.save_button.clicked.connect(self.save_preset)
         self.delete_button.clicked.connect(self.delete_preset)
+        self.seed_all_button.clicked.connect(self.seed_all_presets)
         self.reload_button.clicked.connect(self.reload)
         self.sound_browse_button.clicked.connect(self.browse_sound)
         self.table.cellDoubleClicked.connect(lambda row, _column: self.load_row_to_form(row))
@@ -139,6 +163,21 @@ class EventPresetsTab(QWidget):
         with database_session() as conn:
             initialize_database(conn)
             delete_event_kind_preset(conn, event_kind)
+        self.reload()
+
+    def seed_all_presets(self) -> None:
+        with database_session() as conn:
+            initialize_database(conn)
+            for event_kind in self._event_kind_candidates():
+                upsert_event_kind_preset(
+                    conn,
+                    {
+                        "event_kind": event_kind,
+                        "enabled": True,
+                        "sound_path": "",
+                        "display_template": DEFAULT_EVENT_TEMPLATES.get(event_kind, "{content}"),
+                    },
+                )
         self.reload()
 
     def reload(self) -> None:

@@ -10,6 +10,7 @@ from app.obs.skins import SkinStyle
 class LiveUserProfile:
     user_id: str
     display_name: str = ""
+    display_name_locked: bool = False
     enabled: bool = True
     skin_path: str = ""
     skin_width: int = 512
@@ -27,6 +28,7 @@ class LiveUserProfile:
         return cls(
             user_id=str(row_value(row, "user_id", "") or ""),
             display_name=str(row_value(row, "display_name", "") or ""),
+            display_name_locked=bool(row_value(row, "display_name_locked", 0)),
             enabled=bool(row_value(row, "enabled", 1)),
             skin_path=str(row_value(row, "skin_path", "") or ""),
             skin_width=int(row_value(row, "skin_width", 512) or 512),

@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import datetime
 from typing import Any
 
-from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, QSize, QThread, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -40,6 +40,7 @@ from app.core.logging import (
     should_show_log,
 )
 from app.db.connection import database_session
+from app.db.repositories.profiles import get_live_user_profile, upsert_live_user_profile
 from app.db.schema import initialize_database
 from app.events.pipeline import build_event_processing_plan
 from app.events.models import json_default
@@ -51,6 +52,7 @@ from app.gui.dialogs.account_profile import AccountProfileDialog
 from app.gui.tabs.basic_settings import BasicSettingsTab
 from app.gui.tabs.event_presets import EventPresetsTab
 from app.gui.tabs.live_users import LiveUsersTab
+from app.gui.user_icons import cached_user_icon
 from app.ndgr.fetcher import AllCommentFetcher
 from app.ndgr.results import FetchResult
 from app.ndgr.streamer import LiveCommentStreamer
@@ -127,6 +129,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("シンプルコメビュ - NDGR全種別取得")
         self.resize(1280, 760)
         self.rows: list[dict[str, Any]] = []
+        self.profile_display_names: dict[str, str] = {}
         self.current_lv = ""
         self.comments_auto_scroll = True
         self.thread: QThread | None = None
@@ -139,6 +142,7 @@ class MainWindow(QMainWindow):
         self.voicevox_signals.log.connect(self.handle_log)
         self.overlay_server = LiveOverlayServer()
         self.voicevox_pipeline = self.create_voicevox_pipeline()
+        self.reload_profile_display_names()
 
         self.lv_input = QLineEdit()
         self.lv_input.setPlaceholderText("lv350000000 または https://live.nicovideo.jp/watch/lv...")
@@ -162,11 +166,12 @@ class MainWindow(QMainWindow):
         top.addWidget(self.level_combo)
         top.addWidget(self.trace_checkbox)
 
-        self.table = QTableWidget(0, 12)
+        self.table = QTableWidget(0, 14)
         self.table.setHorizontalHeaderLabels(
-            ["種別", "No", "投稿時刻", "vpos", "ユーザーID", "raw", "hash", "状態", "コマンド", "本文", "source", "page"]
+            ["アイコン", "名前", "種別", "No", "投稿時刻", "vpos", "ユーザーID", "raw", "hash", "状態", "コマンド", "本文", "source", "page"]
         )
-        configure_table_header(self.table, [90, 70, 180, 90, 180, 140, 160, 90, 130, 420, 100, 80])
+        configure_table_header(self.table, [56, 130, 90, 70, 180, 90, 180, 140, 160, 90, 130, 420, 100, 80])
+        self.table.setIconSize(QSize(32, 32))
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.itemSelectionChanged.connect(self.show_selected_raw)
@@ -179,7 +184,17 @@ class MainWindow(QMainWindow):
                     "このユーザーの演出設定を開く",
                     self.open_account_profile_from_row,
                     self.row_has_account_id,
-                )
+                ),
+                TableContextAction(
+                    "この名前でロック",
+                    self.lock_display_name_from_row,
+                    self.row_has_account_id,
+                ),
+                TableContextAction(
+                    "名前ロックを解除",
+                    self.unlock_display_name_from_row,
+                    self.row_has_account_id,
+                ),
             ],
         )
 
@@ -390,6 +405,7 @@ class MainWindow(QMainWindow):
             return result.readable_row
 
         self.live_users_tab.reload()
+        self.reload_profile_display_names()
         self.append_log(
             "INFO",
             f"コメント設定タグ反映: user={result.account_id} {result.command.describe() if result.command else ''}",
@@ -461,6 +477,8 @@ class MainWindow(QMainWindow):
 
     def set_table_row(self, row_index: int, row: dict[str, Any]) -> None:
         columns = [
+            "__icon__",
+            "__display_name__",
             "kind",
             "no",
             "at",
@@ -475,10 +493,21 @@ class MainWindow(QMainWindow):
             "page_index",
         ]
         for column_index, key in enumerate(columns):
-            item = QTableWidgetItem(str(row.get(key, "")))
+            if key == "__icon__":
+                item = QTableWidgetItem("")
+                icon = cached_user_icon(str(row.get("raw_user_id") or row.get("user_id") or ""))
+                if icon is not None:
+                    item.setIcon(icon)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                item.setToolTip(str(row.get("user_id") or ""))
+            elif key == "__display_name__":
+                item = QTableWidgetItem(self.display_name_from_row(row))
+            else:
+                item = QTableWidgetItem(str(row.get(key, "")))
             if key == "content":
                 item.setToolTip(str(row.get(key, "")))
             self.table.setItem(row_index, column_index, item)
+        self.table.setRowHeight(row_index, 36)
 
     def show_selected_raw(self) -> None:
         selected = self.table.selectionModel().selectedRows()
@@ -505,7 +534,64 @@ class MainWindow(QMainWindow):
         dialog = AccountProfileDialog(account_id, self.display_name_from_row(row), self)
         if dialog.exec() == AccountProfileDialog.DialogCode.Accepted:
             self.live_users_tab.reload()
+            self.reload_profile_display_names()
             self.append_log("INFO", f"アカウント演出設定を保存: {account_id}")
+
+    def lock_display_name_from_row(self, row: dict[str, Any], _row_index: int, _column_index: int) -> None:
+        account_id = self.account_id_from_row(row)
+        if not account_id:
+            return
+        display_name = self.display_name_from_row(row)
+        with database_session() as conn:
+            initialize_database(conn)
+            existing = get_live_user_profile(conn, account_id)
+            profile = self.profile_from_existing_row(existing, account_id)
+            if display_name:
+                profile["display_name"] = display_name
+            profile["display_name_locked"] = True
+            upsert_live_user_profile(conn, profile)
+        self.live_users_tab.reload()
+        self.reload_profile_display_names()
+        self.append_log("INFO", f"表示名ロック: {account_id} {profile.get('display_name') or ''}")
+
+    def unlock_display_name_from_row(self, row: dict[str, Any], _row_index: int, _column_index: int) -> None:
+        account_id = self.account_id_from_row(row)
+        if not account_id:
+            return
+        with database_session() as conn:
+            initialize_database(conn)
+            existing = get_live_user_profile(conn, account_id)
+            profile = self.profile_from_existing_row(existing, account_id)
+            profile["display_name_locked"] = False
+            upsert_live_user_profile(conn, profile)
+        self.live_users_tab.reload()
+        self.reload_profile_display_names()
+        self.append_log("INFO", f"表示名ロック解除: {account_id}")
+
+    def profile_from_existing_row(self, row: Any | None, account_id: str) -> dict[str, Any]:
+        return {
+            "enabled": bool(self.row_value(row, "enabled", 1)),
+            "user_id": account_id,
+            "display_name": str(self.row_value(row, "display_name", "") or ""),
+            "display_name_locked": bool(self.row_value(row, "display_name_locked", 0)),
+            "skin_path": str(self.row_value(row, "skin_path", "") or ""),
+            "skin_width": int(self.row_value(row, "skin_width", self.app_config.skin_width) or self.app_config.skin_width),
+            "skin_height": int(self.row_value(row, "skin_height", self.app_config.skin_height) or self.app_config.skin_height),
+            "font_family": str(self.row_value(row, "font_family", "") or ""),
+            "font_size": int(self.row_value(row, "font_size", self.app_config.font_size) or self.app_config.font_size),
+            "font_color": str(self.row_value(row, "font_color", self.app_config.font_color) or self.app_config.font_color),
+            "voicevox_speaker": str(self.row_value(row, "voicevox_speaker", "") or ""),
+            "voicevox_style": str(self.row_value(row, "voicevox_style", "") or ""),
+        }
+
+    @staticmethod
+    def row_value(row: Any | None, key: str, default: Any) -> Any:
+        if row is None:
+            return default
+        try:
+            return row[key]
+        except (KeyError, IndexError):
+            return default
 
     @staticmethod
     def account_id_from_row(row: dict[str, Any]) -> str:
@@ -515,13 +601,51 @@ class MainWindow(QMainWindow):
                 return value
         return ""
 
-    @staticmethod
-    def display_name_from_row(row: dict[str, Any]) -> str:
+    def display_name_from_row(self, row: dict[str, Any]) -> str:
         for key in ("display_name", "user_name", "name"):
             value = str(row.get(key) or "").strip()
             if value:
                 return value
+        payload_name = self.payload_name_from_row(row)
+        if payload_name:
+            return payload_name
+        for key in ("raw_user_id", "user_id", "hashed_user_id"):
+            value = str(row.get(key) or "").strip()
+            if value and value in self.profile_display_names:
+                return self.profile_display_names[value]
         return ""
+
+    @staticmethod
+    def payload_name_from_row(row: dict[str, Any]) -> str:
+        payload = row.get("payload")
+        if not isinstance(payload, dict) and row.get("payload_json"):
+            try:
+                payload = json.loads(str(row.get("payload_json") or "{}"))
+            except json.JSONDecodeError:
+                payload = {}
+        if not isinstance(payload, dict):
+            return ""
+        return str(payload.get("name") or payload.get("user_name") or payload.get("display_name") or "").strip()
+
+    def reload_profile_display_names(self) -> None:
+        try:
+            with database_session() as conn:
+                initialize_database(conn)
+                rows = conn.execute(
+                    """
+                    SELECT user_id, display_name
+                    FROM live_user_profiles
+                    WHERE COALESCE(display_name, '') != ''
+                    """
+                ).fetchall()
+        except Exception:
+            self.profile_display_names = {}
+            return
+        self.profile_display_names = {
+            str(row["user_id"] or ""): str(row["display_name"] or "")
+            for row in rows
+            if str(row["user_id"] or "") and str(row["display_name"] or "")
+        }
 
     def restore_ui_state(self) -> None:
         state = self.ui_state_store.load()

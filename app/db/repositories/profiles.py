@@ -8,13 +8,14 @@ def upsert_live_user_profile(conn: sqlite3.Connection, profile: dict[str, Any]) 
     conn.execute(
         """
         INSERT INTO live_user_profiles(
-            user_id, display_name, enabled, skin_path, skin_width,
+            user_id, display_name, display_name_locked, enabled, skin_path, skin_width,
             skin_height, font_family, font_size, font_color,
             voicevox_speaker, voicevox_style
         )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
             display_name = excluded.display_name,
+            display_name_locked = excluded.display_name_locked,
             enabled = excluded.enabled,
             skin_path = excluded.skin_path,
             skin_width = excluded.skin_width,
@@ -29,6 +30,7 @@ def upsert_live_user_profile(conn: sqlite3.Connection, profile: dict[str, Any]) 
         (
             str(profile.get("user_id") or ""),
             str(profile.get("display_name") or ""),
+            1 if profile.get("display_name_locked", False) else 0,
             1 if profile.get("enabled", True) else 0,
             str(profile.get("skin_path") or ""),
             int(profile.get("skin_width") or 512),
