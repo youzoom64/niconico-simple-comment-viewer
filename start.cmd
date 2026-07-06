@@ -5,8 +5,13 @@ set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
 cd /d "%~dp0"
 set "ROOT=%~dp0..\.."
+set "NICONICO_ROOT=%~dp0.."
 set "PYTHON_EXE=python"
-if exist "%ROOT%\.venv\Scripts\python.exe" (
+if exist "%~dp0.venv\Scripts\python.exe" (
+  set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
+) else if exist "%NICONICO_ROOT%\niconico-watch-app\.venv\Scripts\python.exe" (
+  set "PYTHON_EXE=%NICONICO_ROOT%\niconico-watch-app\.venv\Scripts\python.exe"
+) else if exist "%ROOT%\.venv\Scripts\python.exe" (
   set "PYTHON_EXE=%ROOT%\.venv\Scripts\python.exe"
 )
 "%PYTHON_EXE%" main.py --entrypoint gui %*
