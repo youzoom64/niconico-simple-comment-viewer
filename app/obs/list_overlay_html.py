@@ -129,7 +129,6 @@ const background = document.getElementById("background");
 const root = document.getElementById("list-root");
 let lastId = 0;
 let currentSettings = {};
-const rowLifetimeMs = 90000;
 
 function clampNumber(value, fallback, min, max) {
   const number = Number(value);
@@ -176,14 +175,6 @@ function applySettings(settings) {
     background.style.backgroundImage = `url("${String(currentSettings.background_url).replaceAll('"', "%22")}")`;
   } else {
     background.style.backgroundImage = "";
-  }
-  trimRows();
-}
-
-function trimRows() {
-  const maxRows = Math.floor(clampNumber(currentSettings.max_rows, 18, 1, 80));
-  while (root.children.length > maxRows) {
-    root.removeChild(root.children[0]);
   }
 }
 
@@ -236,13 +227,6 @@ function addEvent(event) {
   row.appendChild(text);
   root.appendChild(row);
   requestAnimationFrame(() => row.classList.add("show"));
-
-  trimRows();
-
-  setTimeout(() => {
-    row.classList.add("fade");
-    setTimeout(() => row.remove(), 240);
-  }, rowLifetimeMs);
 }
 
 async function refreshSettings() {
