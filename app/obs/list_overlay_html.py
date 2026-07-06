@@ -9,12 +9,28 @@ def render_comment_list_html() -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Simple Comment Viewer List</title>
 <style>
+:root {
+  --page-background: rgba(0, 0, 0, 1);
+  --background-opacity: 1;
+  --row-background: rgba(0, 0, 0, 0);
+  --row-gap: 0px;
+  --row-min-height: 0px;
+  --icon-size: 36px;
+  --icon-column: 36px;
+  --icon-display: block;
+  --name-width: 170px;
+  --list-font-family: "Yu Gothic UI";
+  --name-font-size: 20px;
+  --text-font-size: 22px;
+  --name-color: #8fd3ff;
+  --text-color: #ffffff;
+}
 html, body {
   margin: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: transparent;
+  background: var(--page-background);
 }
 body {
   font-family: "Yu Gothic UI", "Meiryo", sans-serif;
@@ -25,8 +41,9 @@ body {
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
+  background-color: var(--page-background);
   opacity: var(--background-opacity);
-  display: none;
+  display: block;
 }
 #list-root {
   position: fixed;
@@ -38,7 +55,7 @@ body {
   padding: 0;
   box-sizing: border-box;
   overflow: hidden;
-  background: transparent;
+  background: var(--page-background);
   pointer-events: none;
 }
 .comment-row {
@@ -47,19 +64,19 @@ body {
   align-items: start;
   column-gap: 8px;
   max-width: 100%;
-  padding: 5px 8px;
+  padding: 4px 8px;
   min-height: var(--row-min-height);
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--row-background);
-  border: 1px solid rgba(255, 255, 255, .16);
-  box-shadow: 0 2px 7px rgba(0, 0, 0, .22);
+  border: 0;
+  box-shadow: none;
   opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 180ms ease, transform 180ms ease;
+  transform: none;
+  transition: opacity 120ms ease;
 }
 .comment-row.show {
   opacity: 1;
-  transform: translateY(0);
+  transform: none;
 }
 .comment-row.fade {
   opacity: 0;
@@ -135,7 +152,7 @@ function applySettings(settings) {
   const showIcons = Boolean(currentSettings.show_icons);
   const iconSize = clampNumber(currentSettings.icon_size, 36, 12, 128);
   const nameWidth = clampNumber(currentSettings.name_width, 170, 40, 600);
-  const rowGap = clampNumber(currentSettings.row_gap, 6, 0, 80);
+  const rowGap = clampNumber(currentSettings.row_gap, 0, 0, 80);
   const rowOpacity = clampNumber(currentSettings.row_background_opacity, 0.56, 0, 1);
   const backgroundOpacity = clampNumber(currentSettings.background_opacity, 0.75, 0, 1);
   const [r, g, b] = hexToRgb(currentSettings.row_background_color || "#000000");
@@ -151,15 +168,14 @@ function applySettings(settings) {
   doc.style.setProperty("--name-color", currentSettings.name_color || "#8fd3ff");
   doc.style.setProperty("--text-color", currentSettings.text_color || "#ffffff");
   doc.style.setProperty("--row-background", `rgba(${r}, ${g}, ${b}, ${rowOpacity})`);
+  doc.style.setProperty("--page-background", `rgba(${r}, ${g}, ${b}, ${rowOpacity})`);
   doc.style.setProperty("--row-gap", `${rowGap}px`);
   doc.style.setProperty("--background-opacity", String(backgroundOpacity));
 
   if (currentSettings.background_url) {
     background.style.backgroundImage = `url("${String(currentSettings.background_url).replaceAll('"', "%22")}")`;
-    background.style.display = "block";
   } else {
     background.style.backgroundImage = "";
-    background.style.display = "none";
   }
   trimRows();
 }

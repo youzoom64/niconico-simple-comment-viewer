@@ -36,7 +36,7 @@ class AppConfig:
     list_text_color: str = "#ffffff"
     list_row_background_color: str = "#000000"
     list_row_background_opacity: float = 0.56
-    list_row_gap: int = 6
+    list_row_gap: int = 0
     list_max_rows: int = 18
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -73,7 +73,7 @@ class AppConfig:
             "list_text_color": str(data.get("list_text_color") or "#ffffff"),
             "list_row_background_color": str(data.get("list_row_background_color") or "#000000"),
             "list_row_background_opacity": float(data.get("list_row_background_opacity", 0.56)),
-            "list_row_gap": int(data.get("list_row_gap") or 6),
+            "list_row_gap": int(data["list_row_gap"]) if "list_row_gap" in data else 0,
             "list_max_rows": int(data.get("list_max_rows") or 18),
         }
         extra = {key: value for key, value in data.items() if key not in known}

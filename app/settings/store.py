@@ -16,7 +16,7 @@ class JsonSettingsStore:
         if not self.path.exists():
             return {}
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
+            data = json.loads(self.path.read_text(encoding="utf-8-sig"))
         except json.JSONDecodeError:
             return {}
         return data if isinstance(data, dict) else {}
