@@ -92,11 +92,30 @@ def normalize_standard_ndgr_comment(chunked_message: Any, kind: str) -> dict[str
 
 
 def summarize_non_chat(kind: str, payload_dict: dict[str, Any]) -> str:
+    if kind == "tag_updated":
+        tag_summary = summarize_tag_updated(payload_dict)
+        if tag_summary:
+            return tag_summary
     for key in ("message", "content", "text", "label", "name", "title", "body", "item_name"):
         value = payload_dict.get(key)
         if value:
             return str(value)
     return json.dumps(payload_dict, ensure_ascii=False, separators=(",", ":"))[:240]
+
+
+def summarize_tag_updated(payload_dict: dict[str, Any]) -> str:
+    tags = payload_dict.get("tags")
+    if not isinstance(tags, list):
+        return ""
+    names: list[str] = []
+    for tag in tags:
+        if isinstance(tag, dict):
+            text = str(tag.get("text") or tag.get("name") or "").strip()
+        else:
+            text = str(tag or "").strip()
+        if text:
+            names.append(text)
+    return " / ".join(names)
 
 
 def chunked_message_to_row(chunked_message: Any, source: str, page_index: int) -> dict[str, Any] | None:
@@ -144,5 +163,7 @@ def chunked_message_to_row(chunked_message: Any, source: str, page_index: int) -
         base["content"] = base["content"] or summarize_non_chat(kind, payload_dict)
     else:
         base["content"] = summarize_non_chat(kind, payload_dict)
+        if kind == "tag_updated" and base["content"]:
+            base["message"] = base["content"]
 
     return base

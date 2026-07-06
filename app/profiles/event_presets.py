@@ -39,7 +39,27 @@ def format_values(event: dict[str, Any]) -> dict[str, Any]:
     payload = event.get("payload")
     if isinstance(payload, dict):
         values.update(flatten_payload(payload))
+        tag_summary = summarize_payload_tags(payload)
+        if tag_summary:
+            values.setdefault("message", tag_summary)
+            values.setdefault("content", tag_summary)
+            values.setdefault("tags_text", tag_summary)
     return values
+
+
+def summarize_payload_tags(payload: dict[str, Any]) -> str:
+    tags = payload.get("tags")
+    if not isinstance(tags, list):
+        return ""
+    names: list[str] = []
+    for tag in tags:
+        if isinstance(tag, dict):
+            text = str(tag.get("text") or tag.get("name") or "").strip()
+        else:
+            text = str(tag or "").strip()
+        if text:
+            names.append(text)
+    return " / ".join(names)
 
 
 def flatten_payload(payload: dict[str, Any], prefix: str = "") -> dict[str, Any]:
