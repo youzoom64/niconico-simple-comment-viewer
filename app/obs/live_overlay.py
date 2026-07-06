@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from app.core.paths import APP_PATHS
 from app.domain.output.render_packet import RenderPacket
+from app.obs.list_overlay_html import render_comment_list_html
 
 
 class OverlayEventHub:
@@ -59,6 +60,12 @@ class LiveOverlayServer:
     def url(self) -> str:
         return self._url
 
+    @property
+    def list_url(self) -> str:
+        if not self._url:
+            return ""
+        return f"{self._url.rstrip('/')}/list"
+
     def start(self) -> str:
         if self._server is not None:
             return self._url
@@ -98,6 +105,9 @@ class OverlayRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/":
             self._write_text(200, render_overlay_html(), "text/html; charset=utf-8")
+            return
+        if parsed.path == "/list":
+            self._write_text(200, render_comment_list_html(), "text/html; charset=utf-8")
             return
         if parsed.path == "/events":
             query = parse_qs(parsed.query)

@@ -238,6 +238,7 @@ class MainWindow(QMainWindow):
         try:
             overlay_url = self.overlay_server.start()
             self.append_log("INFO", f"OBSオーバーレイ起動: {overlay_url}")
+            self.append_log("INFO", f"OBSリスト表示URL: {self.overlay_server.list_url}")
         except Exception as exc:
             self.append_log("ERROR", f"OBSオーバーレイ起動失敗: {type(exc).__name__}: {exc}")
         self.voicevox_pipeline.start()
