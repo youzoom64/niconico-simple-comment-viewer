@@ -15,5 +15,7 @@ data/
 .env
 config.json
 
+app/services/chrome_debug_data_*/
+
 Thumbs.db
 Desktop.ini

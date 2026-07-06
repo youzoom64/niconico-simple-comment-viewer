@@ -60,8 +60,15 @@ def decide_tag_change(config: AppConfig, row: dict[str, Any]) -> TagChangeDecisi
     return TagChangeDecision(False, reason="no_keyword")
 
 
-def change_live_tags(lv: str, tags: tuple[str, ...], *, headless: bool = True, timeout_seconds: float = 30.0) -> None:
-    profile_dir = default_chrome_profile_dir()
+def change_live_tags(
+    lv: str,
+    tags: tuple[str, ...],
+    *,
+    headless: bool = True,
+    timeout_seconds: float = 30.0,
+    profile_dir: str = "",
+) -> None:
+    profile_dir = profile_dir or default_chrome_profile_dir()
     port = 9224
     launch_chrome(profile_dir=profile_dir, port=port, headless=headless, copy_profile=True)
     driver = get_driver(port=port, wait=0.8)
@@ -81,8 +88,7 @@ def default_chrome_profile_dir() -> str:
     profiles = get_profiles()
     if not profiles:
         raise RuntimeError("Chromeプロファイルが見つからない")
-    logged_in = [profile for profile in profiles if profile.get("email")]
-    return str((logged_in or profiles)[0]["profile_dir"])
+    return str(profiles[0]["profile_dir"])
 
 
 def apply_tags_with_dom(driver: webdriver.Chrome, tags: tuple[str, ...], *, timeout_seconds: float) -> None:

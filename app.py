@@ -147,17 +147,32 @@ class TagChangeWorker(QObject):
     finished = pyqtSignal(str, object)
     failed = pyqtSignal(str, str)
 
-    def __init__(self, lv: str, keyword: str, tags: tuple[str, ...], headless: bool, timeout_seconds: float) -> None:
+    def __init__(
+        self,
+        lv: str,
+        keyword: str,
+        tags: tuple[str, ...],
+        headless: bool,
+        timeout_seconds: float,
+        chrome_profile: str,
+    ) -> None:
         super().__init__()
         self.lv = lv
         self.keyword = keyword
         self.tags = tags
         self.headless = headless
         self.timeout_seconds = timeout_seconds
+        self.chrome_profile = chrome_profile
 
     def run(self) -> None:
         try:
-            change_live_tags(self.lv, self.tags, headless=self.headless, timeout_seconds=self.timeout_seconds)
+            change_live_tags(
+                self.lv,
+                self.tags,
+                headless=self.headless,
+                timeout_seconds=self.timeout_seconds,
+                profile_dir=self.chrome_profile,
+            )
             self.finished.emit(self.keyword, self.tags)
         except Exception as exc:
             self.failed.emit(self.keyword, f"{type(exc).__name__}: {exc}")
@@ -546,6 +561,7 @@ class MainWindow(QMainWindow):
             decision.tags,
             self.app_config.tag_change_headless,
             self.app_config.tag_change_timeout_seconds,
+            self.app_config.tag_change_chrome_profile,
         )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)

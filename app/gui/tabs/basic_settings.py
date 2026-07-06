@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QFileDialog, QCheckBox, QComboBox, QDoubleSpinBox, Q
 from app.core.config import AppConfig
 from app.gui.common.github_skin_picker import select_github_skin
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
+from app.services.chrome_debug import get_profiles
 from app.settings.store import JsonSettingsStore
 
 
@@ -101,6 +102,8 @@ class BasicSettingsTab(QWidget):
         self.tag_change_rules_input.setPlaceholderText("1行1ルール。例: タグ変えて=>雑談,ゲーム,初見歓迎")
         self.tag_change_rules_input.setFixedHeight(120)
         self.tag_change_headless_input = QCheckBox("Seleniumを非表示で実行")
+        self.tag_change_chrome_profile_input = QComboBox()
+        self.tag_change_reload_profiles_button = QPushButton("再読込")
         self.tag_change_timeout_input = QDoubleSpinBox()
         self.tag_change_timeout_input.setRange(10.0, 180.0)
         self.tag_change_timeout_input.setSingleStep(5.0)
@@ -177,6 +180,10 @@ class BasicSettingsTab(QWidget):
         form.addRow("", self.tag_change_enabled_input)
         form.addRow("タグ変更ルール", self.tag_change_rules_input)
         form.addRow("", self.tag_change_headless_input)
+        profile_row = QHBoxLayout()
+        profile_row.addWidget(self.tag_change_chrome_profile_input, 1)
+        profile_row.addWidget(self.tag_change_reload_profiles_button)
+        form.addRow("Chromeアカウント", profile_row)
         form.addRow("Selenium timeout秒", self.tag_change_timeout_input)
         note = QLabel("コメントにキーワードが含まれたら、Seleniumで放送ページを開いてタグ編集UIを操作する。")
         note.setWordWrap(True)
@@ -246,6 +253,7 @@ class BasicSettingsTab(QWidget):
 
     def _connect(self) -> None:
         self.reload_speakers_button.clicked.connect(self.reload_speakers)
+        self.tag_change_reload_profiles_button.clicked.connect(self.reload_chrome_profiles)
         self.skin_github_button.clicked.connect(self.select_github_skin)
         self.skin_browse_button.clicked.connect(self.browse_skin)
         self.list_background_browse_button.clicked.connect(self.browse_list_background)
@@ -324,6 +332,7 @@ class BasicSettingsTab(QWidget):
             self.tag_change_enabled_input.setChecked(bool(config.tag_change_enabled))
             self.tag_change_rules_input.setPlainText(config.tag_change_rules)
             self.tag_change_headless_input.setChecked(bool(config.tag_change_headless))
+            self.reload_chrome_profiles(config.tag_change_chrome_profile)
             self.tag_change_timeout_input.setValue(float(config.tag_change_timeout_seconds))
         finally:
             self.loading_config = False
@@ -379,6 +388,32 @@ class BasicSettingsTab(QWidget):
             return
         self.status_label.setText(f"VOICEVOX話者読込: {count}件")
 
+    def reload_chrome_profiles(self, selected_profile: str = "") -> None:
+        current = selected_profile or self.current_tag_change_chrome_profile()
+        self.tag_change_chrome_profile_input.clear()
+        try:
+            profiles = get_profiles()
+        except Exception as exc:
+            self.status_label.setText(f"Chromeアカウント読込失敗: {type(exc).__name__}")
+            return
+        for profile in profiles:
+            profile_dir = str(profile.get("profile_dir") or "")
+            email = str(profile.get("email") or "(未ログイン)")
+            name = str(profile.get("name") or "")
+            label = f"{profile_dir} / {email}"
+            if name:
+                label = f"{label} / {name}"
+            self.tag_change_chrome_profile_input.addItem(label, profile_dir)
+        if current:
+            index = self.tag_change_chrome_profile_input.findData(current)
+            if index >= 0:
+                self.tag_change_chrome_profile_input.setCurrentIndex(index)
+        self.status_label.setText(f"Chromeアカウント読込: {len(profiles)}件")
+
+    def current_tag_change_chrome_profile(self) -> str:
+        value = self.tag_change_chrome_profile_input.currentData()
+        return str(value or "")
+
     def save_config(self) -> None:
         data = self.config.to_dict()
         data.update(
@@ -424,6 +459,7 @@ class BasicSettingsTab(QWidget):
                 "tag_change_rules": self.tag_change_rules_input.toPlainText().strip(),
                 "tag_change_headless": self.tag_change_headless_input.isChecked(),
                 "tag_change_timeout_seconds": float(self.tag_change_timeout_input.value()),
+                "tag_change_chrome_profile": self.current_tag_change_chrome_profile(),
             }
         )
         self.config = AppConfig.from_dict(data)

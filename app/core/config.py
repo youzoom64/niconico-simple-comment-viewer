@@ -49,6 +49,7 @@ class AppConfig:
     tag_change_rules: str = ""
     tag_change_headless: bool = True
     tag_change_timeout_seconds: float = 30.0
+    tag_change_chrome_profile: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -97,6 +98,7 @@ class AppConfig:
             "tag_change_rules": str(data.get("tag_change_rules") or ""),
             "tag_change_headless": bool(data.get("tag_change_headless", True)),
             "tag_change_timeout_seconds": float(data.get("tag_change_timeout_seconds") or 30.0),
+            "tag_change_chrome_profile": str(data.get("tag_change_chrome_profile") or ""),
         }
         extra = {key: value for key, value in data.items() if key not in known}
         return cls(**known, extra=extra)
@@ -146,5 +148,6 @@ class AppConfig:
             "tag_change_rules": self.tag_change_rules,
             "tag_change_headless": self.tag_change_headless,
             "tag_change_timeout_seconds": self.tag_change_timeout_seconds,
+            "tag_change_chrome_profile": self.tag_change_chrome_profile,
             **self.extra,
         }
