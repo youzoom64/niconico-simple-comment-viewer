@@ -4,6 +4,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QFileDialog, QCheckBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QSpinBox, QTabWidget, QVBoxLayout, QWidget
 
 from app.core.config import AppConfig
+from app.gui.common.github_skin_picker import select_github_skin
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
 from app.settings.store import JsonSettingsStore
 
@@ -30,7 +31,8 @@ class BasicSettingsTab(QWidget):
         self.voice_volume_slider.setPageStep(10)
         self.voice_volume_label = QLabel("100%")
         self.skin_path_input = QLineEdit()
-        self.skin_browse_button = QPushButton("参照")
+        self.skin_github_button = QPushButton("GitHub")
+        self.skin_browse_button = QPushButton("ローカル")
         self.skin_width_input = QSpinBox()
         self.skin_width_input.setRange(1, 4096)
         self.skin_height_input = QSpinBox()
@@ -86,6 +88,7 @@ class BasicSettingsTab(QWidget):
         form.addRow("読み上げ音量", volume_row)
         skin_row = QHBoxLayout()
         skin_row.addWidget(self.skin_path_input, 1)
+        skin_row.addWidget(self.skin_github_button)
         skin_row.addWidget(self.skin_browse_button)
         form.addRow("基本スキン", skin_row)
         form.addRow("基本スキン幅", self.skin_width_input)
@@ -114,6 +117,7 @@ class BasicSettingsTab(QWidget):
 
     def _connect(self) -> None:
         self.reload_speakers_button.clicked.connect(self.reload_speakers)
+        self.skin_github_button.clicked.connect(self.select_github_skin)
         self.skin_browse_button.clicked.connect(self.browse_skin)
         self.voice_volume_slider.valueChanged.connect(self.update_voice_volume_label)
         self.save_button.clicked.connect(self.save_config)
@@ -146,6 +150,11 @@ class BasicSettingsTab(QWidget):
         )
         if path:
             self.skin_path_input.setText(path)
+
+    def select_github_skin(self) -> None:
+        skin_url = select_github_skin(self.skin_path_input.text().strip(), self)
+        if skin_url:
+            self.skin_path_input.setText(skin_url)
 
     def update_voice_volume_label(self, value: int) -> None:
         self.voice_volume_label.setText(f"{int(value)}%")

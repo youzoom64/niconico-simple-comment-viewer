@@ -24,6 +24,7 @@ from app.events.kinds import MESSAGE_KIND_FIELDS
 from app.gui.common.context_menu import install_table_copy_menu
 from app.gui.common.file_drop_line_edit import FileDropLineEdit
 from app.gui.common.font_combo import FontFamilyCombo
+from app.gui.common.github_skin_picker import select_github_skin
 from app.gui.common.scroll_guard import capture_scroll, restore_scroll
 from app.gui.common.table_state import configure_table_header, connect_persistent_table_state, restore_persistent_table_state
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
@@ -110,8 +111,9 @@ class EventPresetsTab(QWidget):
         self.template_input.setPlaceholderText("例: 【広告】{message} / 【ギフト】{advertiser_name}さん {item_name} {point}pt")
         self.template_input.setFixedHeight(88)
         self.skin_path_input = FileDropLineEdit()
-        self.skin_path_input.setPlaceholderText("スキン画像をドロップ、または参照")
-        self.skin_browse_button = QPushButton("参照")
+        self.skin_path_input.setPlaceholderText("GitHubスキンを選択、またはローカル画像をドロップ")
+        self.skin_github_button = QPushButton("GitHub")
+        self.skin_browse_button = QPushButton("ローカル")
         self.skin_width_input = QSpinBox()
         self.skin_width_input.setRange(0, 4096)
         self.skin_width_input.setSpecialValueText("基本")
@@ -161,6 +163,7 @@ class EventPresetsTab(QWidget):
         form.addRow("表示テンプレート", self.template_input)
         skin_row = QHBoxLayout()
         skin_row.addWidget(self.skin_path_input, 1)
+        skin_row.addWidget(self.skin_github_button)
         skin_row.addWidget(self.skin_browse_button)
         form.addRow("スキン", skin_row)
         form.addRow("スキン幅", self.skin_width_input)
@@ -190,6 +193,7 @@ class EventPresetsTab(QWidget):
         self.seed_all_button.clicked.connect(self.seed_all_presets)
         self.reload_button.clicked.connect(self.reload)
         self.sound_browse_button.clicked.connect(self.browse_sound)
+        self.skin_github_button.clicked.connect(self.select_github_skin)
         self.skin_browse_button.clicked.connect(self.browse_skin)
         self.voicevox_reload_button.clicked.connect(self.reload_voicevox_styles)
         self.table.cellDoubleClicked.connect(lambda row, _column: self.load_row_to_form(row))
@@ -203,6 +207,11 @@ class EventPresetsTab(QWidget):
         path, _filter = QFileDialog.getOpenFileName(self, "スキン画像を選択", "", "Images (*.png *.jpg *.jpeg *.webp);;All Files (*)")
         if path:
             self.skin_path_input.setText(path)
+
+    def select_github_skin(self) -> None:
+        skin_url = select_github_skin(self.skin_path_input.text().strip(), self)
+        if skin_url:
+            self.skin_path_input.setText(skin_url)
 
     def reload_voicevox_styles(self) -> None:
         self.app_config = self.settings_store.load_config()

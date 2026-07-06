@@ -20,6 +20,7 @@ from app.db.connection import database_session
 from app.db.repositories.profiles import get_live_user_profile, upsert_live_user_profile
 from app.db.schema import initialize_database
 from app.gui.common.font_combo import FontFamilyCombo
+from app.gui.common.github_skin_picker import select_github_skin
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
 from app.settings.store import JsonSettingsStore
 
@@ -40,7 +41,8 @@ class AccountProfileDialog(QDialog):
         self.display_name_input = QLineEdit(self.initial_display_name)
         self.display_name_locked_input = QCheckBox("表示名をロック")
         self.skin_path_input = QLineEdit()
-        self.skin_browse_button = QPushButton("参照")
+        self.skin_github_button = QPushButton("GitHub")
+        self.skin_browse_button = QPushButton("ローカル")
         self.skin_width_input = QSpinBox()
         self.skin_width_input.setRange(1, 4096)
         self.skin_width_input.setValue(512)
@@ -71,6 +73,7 @@ class AccountProfileDialog(QDialog):
         form.addRow("", self.display_name_locked_input)
         skin_row = QHBoxLayout()
         skin_row.addWidget(self.skin_path_input, 1)
+        skin_row.addWidget(self.skin_github_button)
         skin_row.addWidget(self.skin_browse_button)
         form.addRow("スキン", skin_row)
         form.addRow("スキン幅", self.skin_width_input)
@@ -95,6 +98,7 @@ class AccountProfileDialog(QDialog):
         self.setLayout(layout)
 
     def _connect(self) -> None:
+        self.skin_github_button.clicked.connect(self.select_github_skin)
         self.skin_browse_button.clicked.connect(self.browse_skin)
         self.voicevox_reload_button.clicked.connect(self.reload_voicevox_styles)
         self.save_button.clicked.connect(self.save_profile)
@@ -123,6 +127,11 @@ class AccountProfileDialog(QDialog):
         path, _filter = QFileDialog.getOpenFileName(self, "スキン画像を選択", "", "Images (*.png *.jpg *.jpeg *.webp);;All Files (*)")
         if path:
             self.skin_path_input.setText(path)
+
+    def select_github_skin(self) -> None:
+        skin_url = select_github_skin(self.skin_path_input.text().strip(), self)
+        if skin_url:
+            self.skin_path_input.setText(skin_url)
 
     def load_profile(self) -> None:
         with database_session() as conn:

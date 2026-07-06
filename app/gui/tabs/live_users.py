@@ -23,6 +23,7 @@ from app.gui.common.context_menu import install_table_copy_menu
 from app.gui.common.scroll_guard import capture_scroll, restore_scroll
 from app.gui.common.table_state import configure_table_header, connect_persistent_table_state, restore_persistent_table_state
 from app.gui.common.font_combo import FontFamilyCombo
+from app.gui.common.github_skin_picker import select_github_skin
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
 from app.settings.store import JsonSettingsStore
 from app.settings.ui_state import UiStateStore
@@ -74,7 +75,8 @@ class LiveUsersTab(QWidget):
         self.save_button = QPushButton("保存")
         self.delete_button = QPushButton("削除")
         self.reload_button = QPushButton("再読込")
-        self.skin_browse_button = QPushButton("参照")
+        self.skin_github_button = QPushButton("GitHub")
+        self.skin_browse_button = QPushButton("ローカル")
         self.table = QTableWidget(0, len(self.columns))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
         configure_table_header(self.table, [60, 160, 160, 100, 260, 90, 90, 160, 80, 90, 160, 160])
@@ -94,6 +96,7 @@ class LiveUsersTab(QWidget):
         form.addRow("", self.display_name_locked_input)
         skin_row = QHBoxLayout()
         skin_row.addWidget(self.skin_path_input, 1)
+        skin_row.addWidget(self.skin_github_button)
         skin_row.addWidget(self.skin_browse_button)
         form.addRow("スキン", skin_row)
         form.addRow("スキン幅", self.skin_width_input)
@@ -121,6 +124,7 @@ class LiveUsersTab(QWidget):
         self.save_button.clicked.connect(self.save_profile)
         self.delete_button.clicked.connect(self.delete_profile)
         self.reload_button.clicked.connect(self.reload)
+        self.skin_github_button.clicked.connect(self.select_github_skin)
         self.skin_browse_button.clicked.connect(self.browse_skin)
         self.voicevox_reload_button.clicked.connect(self.reload_voicevox_styles)
         self.table.cellDoubleClicked.connect(lambda row, _column: self.load_row_to_form(row))
@@ -148,6 +152,11 @@ class LiveUsersTab(QWidget):
         path, _filter = QFileDialog.getOpenFileName(self, "スキン画像を選択", "", "Images (*.png *.jpg *.jpeg *.webp);;All Files (*)")
         if path:
             self.skin_path_input.setText(path)
+
+    def select_github_skin(self) -> None:
+        skin_url = select_github_skin(self.skin_path_input.text().strip(), self)
+        if skin_url:
+            self.skin_path_input.setText(skin_url)
 
     def save_profile(self) -> None:
         profile = {
