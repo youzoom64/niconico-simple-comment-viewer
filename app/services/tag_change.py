@@ -5,8 +5,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 
 from app.core.config import AppConfig
@@ -24,7 +22,15 @@ class TagChangeDecision:
     matched: bool
     keyword: str = ""
     tags: tuple[str, ...] = ()
+    operation: "TagOperation | None" = None
     reason: str = ""
+
+
+@dataclass(frozen=True)
+class TagOperation:
+    clear_all: bool = False
+    remove_tags: tuple[str, ...] = ()
+    add_tags: tuple[str, ...] = ()
 
 
 def parse_tag_change_rules(value: str) -> list[TagChangeRule]:
@@ -54,10 +60,42 @@ def decide_tag_change(config: AppConfig, row: dict[str, Any]) -> TagChangeDecisi
     text = str(row.get("content") or row.get("text") or "").strip()
     if not text:
         return TagChangeDecision(False, reason="empty_comment")
+    command = parse_tag_operation_command(text)
+    if command:
+        return TagChangeDecision(True, keyword="タグ:", tags=command.add_tags, operation=command)
     for rule in parse_tag_change_rules(config.tag_change_rules):
         if rule.keyword in text:
-            return TagChangeDecision(True, keyword=rule.keyword, tags=rule.tags)
+            return TagChangeDecision(True, keyword=rule.keyword, tags=rule.tags, operation=TagOperation(add_tags=rule.tags))
     return TagChangeDecision(False, reason="no_keyword")
+
+
+def parse_tag_operation_command(text: str) -> TagOperation | None:
+    stripped = str(text or "").strip()
+    if not stripped.startswith("タグ:"):
+        return None
+    body = stripped.split(":", 1)[1].strip()
+    if not body:
+        return None
+    clear_all = False
+    remove_tags: list[str] = []
+    add_tags: list[str] = []
+    for token in body.split():
+        token = token.strip()
+        if not token:
+            continue
+        if token == "--":
+            clear_all = True
+            continue
+        if token.startswith("+") and len(token) > 1:
+            add_tags.append(token[1:].strip())
+            continue
+        if token.startswith("-") and len(token) > 1:
+            remove_tags.append(token[1:].strip())
+    add_tags = [tag for tag in add_tags if tag]
+    remove_tags = [tag for tag in remove_tags if tag]
+    if not clear_all and not remove_tags and not add_tags:
+        return None
+    return TagOperation(clear_all=clear_all, remove_tags=tuple(remove_tags), add_tags=tuple(add_tags))
 
 
 def change_live_tags(
@@ -67,8 +105,10 @@ def change_live_tags(
     headless: bool = True,
     timeout_seconds: float = 30.0,
     profile_dir: str = "",
+    operation: TagOperation | None = None,
 ) -> None:
     profile_dir = profile_dir or default_chrome_profile_dir()
+    operation = operation or TagOperation(add_tags=tags)
     port = 9224
     launch_chrome(profile_dir=profile_dir, port=port, headless=headless, copy_profile=True)
     driver = get_driver(port=port, wait=0.8)
@@ -76,7 +116,7 @@ def change_live_tags(
         driver.set_page_load_timeout(max(10, int(timeout_seconds)))
         driver.get(f"https://live.nicovideo.jp/watch/{lv}")
         WebDriverWait(driver, timeout_seconds).until(lambda d: d.execute_script("return document.readyState") == "complete")
-        apply_tags_with_dom(driver, tags, timeout_seconds=timeout_seconds)
+        apply_tags_with_dom(driver, operation, timeout_seconds=timeout_seconds)
     finally:
         try:
             driver.quit()
@@ -91,19 +131,18 @@ def default_chrome_profile_dir() -> str:
     return str(profiles[0]["profile_dir"])
 
 
-def apply_tags_with_dom(driver: webdriver.Chrome, tags: tuple[str, ...], *, timeout_seconds: float) -> None:
+def apply_tags_with_dom(driver: webdriver.Chrome, operation: TagOperation, *, timeout_seconds: float) -> None:
     deadline = time.monotonic() + timeout_seconds
     script = """
-const tags = arguments[0];
 const buttons = Array.from(document.querySelectorAll('button, [role="button"], a'));
 const edit = buttons.find(el => /タグ.*(編集|設定)|編集.*タグ/.test((el.innerText || el.textContent || '').trim()));
 if (edit) edit.click();
 return Boolean(edit);
 """
-    driver.execute_script(script, list(tags))
+    driver.execute_script(script)
     time.sleep(0.5)
     while time.monotonic() < deadline:
-        if driver.execute_script(set_tags_script(), list(tags)):
+        if driver.execute_script(set_tags_script(), operation.clear_all, list(operation.remove_tags), list(operation.add_tags)):
             return
         time.sleep(0.5)
     raise RuntimeError("タグ編集UIが見つからない、または保存できない")
@@ -111,29 +150,44 @@ return Boolean(edit);
 
 def set_tags_script() -> str:
     return """
-const tags = arguments[0];
-const text = tags.join(' ');
-const inputs = Array.from(document.querySelectorAll('input[type="text"], textarea, [contenteditable="true"]'));
-const target = inputs.find(el => {
-  const label = [el.placeholder, el.getAttribute('aria-label'), el.name, el.id].filter(Boolean).join(' ');
-  return /タグ|tag/i.test(label) || el.tagName === 'TEXTAREA' || el.isContentEditable;
-});
-if (!target) return false;
-target.focus();
-if (target.isContentEditable) {
-  target.innerText = text;
-  target.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText', data: text}));
-} else {
-  target.value = text;
-  target.dispatchEvent(new Event('input', {bubbles: true}));
-  target.dispatchEvent(new Event('change', {bubbles: true}));
+const clearAll = arguments[0];
+const removeTags = arguments[1];
+const addTags = arguments[2];
+const textOf = el => (el.innerText || el.textContent || el.value || '').trim();
+const currentRows = () => Array.from(document.querySelectorAll('button,[role="button"]'))
+  .filter(el => (el.getAttribute('aria-label') || '') === '削除する')
+  .map(btn => {
+    let node = btn;
+    for (let depth = 0; depth < 6 && node; depth++, node = node.parentElement) {
+      const text = textOf(node).replace(/\s+/g, ' ');
+      if (text && text.length < 80) return {button: btn, text};
+    }
+    return {button: btn, text: textOf(btn)};
+  });
+for (const row of currentRows()) {
+  if (clearAll || removeTags.includes(row.text)) row.button.click();
+}
+const input = Array.from(document.querySelectorAll('input[type="text"], textarea, [contenteditable="true"]'))
+  .find(el => /追加するタグ|タグ|tag/i.test([el.placeholder, el.getAttribute('aria-label'), el.name, el.id].filter(Boolean).join(' ')));
+if (addTags.length && !input) return false;
+for (const tag of addTags) {
+  input.focus();
+  if (input.isContentEditable) {
+    input.innerText = tag;
+    input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText', data: tag}));
+  } else {
+    input.value = tag;
+    input.dispatchEvent(new Event('input', {bubbles: true}));
+    input.dispatchEvent(new Event('change', {bubbles: true}));
+  }
+  input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+  input.dispatchEvent(new KeyboardEvent('keyup', {key: 'Enter', bubbles: true}));
 }
 const buttons = Array.from(document.querySelectorAll('button, [role="button"], a'));
-const save = buttons.find(el => /(保存|登録|変更|完了|更新)/.test((el.innerText || el.textContent || '').trim()));
+const save = buttons.find(el => /(設定を番組に反映する|保存|登録|変更|完了|更新)/.test(textOf(el)));
 if (save) {
   save.click();
   return true;
 }
-target.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
-return true;
+return false;
 """

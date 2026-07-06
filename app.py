@@ -65,7 +65,7 @@ from app.services.sequence.comment_numbering import CommentNumberIssuer
 from app.services.speech_synthesis.fifo_pipeline import VoicevoxFifoPipeline
 from app.services.speech_synthesis.job_factory import build_voicevox_submission
 from app.services.speech_synthesis.voicevox_engine_adapter import build_voicevox_synthesizer
-from app.services.tag_change import change_live_tags, decide_tag_change
+from app.services.tag_change import TagOperation, change_live_tags, decide_tag_change
 from app.settings.ui_state import UiStateStore
 from app.settings.store import JsonSettingsStore
 from app.voicevox.speed_rules import resolve_linear_speed_scale
@@ -152,6 +152,7 @@ class TagChangeWorker(QObject):
         lv: str,
         keyword: str,
         tags: tuple[str, ...],
+        operation: TagOperation | None,
         headless: bool,
         timeout_seconds: float,
         chrome_profile: str,
@@ -160,6 +161,7 @@ class TagChangeWorker(QObject):
         self.lv = lv
         self.keyword = keyword
         self.tags = tags
+        self.operation = operation
         self.headless = headless
         self.timeout_seconds = timeout_seconds
         self.chrome_profile = chrome_profile
@@ -172,6 +174,7 @@ class TagChangeWorker(QObject):
                 headless=self.headless,
                 timeout_seconds=self.timeout_seconds,
                 profile_dir=self.chrome_profile,
+                operation=self.operation,
             )
             self.finished.emit(self.keyword, self.tags)
         except Exception as exc:
@@ -559,6 +562,7 @@ class MainWindow(QMainWindow):
             self.current_lv,
             decision.keyword,
             decision.tags,
+            decision.operation,
             self.app_config.tag_change_headless,
             self.app_config.tag_change_timeout_seconds,
             self.app_config.tag_change_chrome_profile,
