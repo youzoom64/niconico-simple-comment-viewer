@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
-    QLineEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -22,6 +21,7 @@ from app.db.repositories.presets import delete_event_kind_preset, list_event_kin
 from app.db.schema import initialize_database
 from app.events.kinds import MESSAGE_KIND_FIELDS
 from app.gui.common.context_menu import install_table_copy_menu
+from app.gui.common.file_drop_line_edit import FileDropLineEdit
 from app.gui.common.scroll_guard import capture_scroll, restore_scroll
 from app.gui.common.table_state import configure_table_header, connect_persistent_table_state, restore_persistent_table_state
 from app.settings.ui_state import UiStateStore
@@ -84,7 +84,8 @@ class EventPresetsTab(QWidget):
         self.kind_input.addItems(self._event_kind_candidates())
         self.enabled_input = QCheckBox("有効")
         self.enabled_input.setChecked(True)
-        self.sound_path_input = QLineEdit()
+        self.sound_path_input = FileDropLineEdit()
+        self.sound_path_input.setPlaceholderText("音声ファイルをドロップ、または参照")
         self.sound_browse_button = QPushButton("参照")
         self.template_input = QTextEdit()
         self.template_input.setPlaceholderText("例: 【広告】{message} / 【ギフト】{advertiser_name}さん {item_name} {point}pt")
@@ -192,11 +193,36 @@ class EventPresetsTab(QWidget):
         self.table.setRowCount(len(self.rows))
         for row_index, row in enumerate(self.rows):
             for column_index, (key, _label) in enumerate(self.columns):
-                value = "ON" if key == "enabled" and row.get(key) else row.get(key, "")
-                if key == "enabled" and not row.get(key):
-                    value = "OFF"
+                if key == "enabled":
+                    self.table.setItem(row_index, column_index, QTableWidgetItem(""))
+                    self.table.setCellWidget(row_index, column_index, self._enabled_checkbox(row_index, row))
+                    continue
+                value = row.get(key, "")
                 self.table.setItem(row_index, column_index, QTableWidgetItem(str(value or "")))
         restore_scroll(self.table, scroll_state, keep_bottom=False)
+
+    def _enabled_checkbox(self, row_index: int, row: dict[str, Any]) -> QCheckBox:
+        checkbox = QCheckBox()
+        checkbox.setChecked(bool(row.get("enabled")))
+        checkbox.setToolTip("このイベント設定を有効にする")
+        checkbox.stateChanged.connect(lambda _state, index=row_index: self.save_enabled_from_table(index))
+        return checkbox
+
+    def save_enabled_from_table(self, row_index: int) -> None:
+        row = self.row_data_for_menu(row_index)
+        if not row:
+            return
+        checkbox = self.table.cellWidget(row_index, 1)
+        if not isinstance(checkbox, QCheckBox):
+            return
+        preset = dict(row)
+        preset["enabled"] = checkbox.isChecked()
+        with database_session() as conn:
+            initialize_database(conn)
+            upsert_event_kind_preset(conn, preset)
+        self.rows[row_index] = preset
+        if self.kind_input.currentText().strip() == str(preset.get("event_kind") or ""):
+            self.enabled_input.setChecked(bool(preset.get("enabled")))
 
     def load_row_to_form(self, row_index: int) -> None:
         row = self.row_data_for_menu(row_index)
