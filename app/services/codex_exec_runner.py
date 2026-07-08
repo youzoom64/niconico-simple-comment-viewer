@@ -25,7 +25,7 @@ def run_codex_exec(
     prompt: str,
     *,
     cwd: str | Path | None = None,
-    timeout_seconds: int = 300,
+    timeout_seconds: int | float | None = None,
     model: str = "",
     effort: str = "",
 ) -> CodexExecResult:
@@ -52,17 +52,34 @@ def run_codex_exec(
     env = os.environ.copy()
     env.setdefault("PYTHONUTF8", "1")
     env.setdefault("PYTHONIOENCODING", "utf-8")
-    completed = subprocess.run(
-        command,
-        cwd=str(workdir),
-        env=env,
-        input=prompt,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=max(1, int(timeout_seconds)),
-    )
+    timeout = normalize_timeout_seconds(timeout_seconds)
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(workdir),
+            env=env,
+            input=prompt,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = text_from_timeout_stream(exc.stdout)
+        stderr = text_from_timeout_stream(exc.stderr)
+        detail = stderr or stdout or f"Codex timed out after {timeout} seconds"
+        try:
+            output_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return CodexExecResult(
+            command=command,
+            returncode=-1,
+            stdout=stdout,
+            stderr=detail,
+            text=detail,
+        )
     stdout = completed.stdout
     if output_path.exists():
         stdout = output_path.read_text(encoding="utf-8", errors="replace")
@@ -84,6 +101,26 @@ def command_path(name: str) -> str:
     if local.is_file():
         return str(local)
     return shutil.which(name) or name
+
+
+def normalize_timeout_seconds(value: int | float | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        seconds = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    if seconds <= 0:
+        return None
+    return max(1, seconds)
+
+
+def text_from_timeout_stream(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace").strip()
+    return str(value).strip()
 
 
 def temp_file(workdir: Path, prefix: str) -> Path:

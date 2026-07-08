@@ -3,7 +3,13 @@ from __future__ import annotations
 import sqlite3
 import unittest
 
-from app.db.repositories.events import save_event_row, save_event_rows
+from app.db.repositories.events import (
+    list_listener_event_kinds,
+    list_listener_events,
+    list_listener_lvs,
+    save_event_row,
+    save_event_rows,
+)
 from app.db.schema import initialize_database
 
 
@@ -48,6 +54,39 @@ class EventRepositoryTests(unittest.TestCase):
         links = [row[0] for row in conn.execute("SELECT raw_event_id FROM normalized_events ORDER BY id")]
         self.assertEqual(2, len(set(links)))
         self.assertTrue(all(link is not None for link in links))
+
+    def test_list_listener_events_filters_by_identity_and_text(self) -> None:
+        conn = self.make_connection()
+        save_event_row(
+            conn,
+            "lv1",
+            {"source": "stream", "message_id": "1", "kind": "chat", "raw_user_id": "1234", "user_id": "1234", "content": "hello"},
+        )
+        save_event_row(
+            conn,
+            "lv2",
+            {"source": "stream", "message_id": "2", "kind": "chat", "raw_user_id": "1234", "user_id": "1234", "content": "world"},
+        )
+        save_event_row(
+            conn,
+            "lv1",
+            {"source": "stream", "message_id": "3", "kind": "chat", "raw_user_id": "9999", "user_id": "9999", "content": "hello"},
+        )
+
+        rows = list_listener_events(conn, (("raw_user_id", "1234"), ("user_id", "1234")), text="hello")
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("1234", rows[0]["raw_user_id"])
+        self.assertEqual("hello", rows[0]["content"])
+
+        lv_counts = {row["lv"]: row["event_count"] for row in list_listener_lvs(conn, (("raw_user_id", "1234"),))}
+        self.assertEqual({"lv1": 1, "lv2": 1}, lv_counts)
+
+        kind_counts = {
+            row["event_kind"]: row["event_count"]
+            for row in list_listener_event_kinds(conn, (("raw_user_id", "1234"),), lv="lv1")
+        }
+        self.assertEqual({"chat": 1}, kind_counts)
 
 
 if __name__ == "__main__":

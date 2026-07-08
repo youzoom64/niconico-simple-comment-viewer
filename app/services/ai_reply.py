@@ -92,7 +92,7 @@ class AiReplyHook:
             )
             result = run_codex_exec(
                 prompt,
-                timeout_seconds=int(self.config.ai_reply_timeout_seconds or 300),
+                timeout_seconds=ai_reply_timeout_seconds(self.config),
                 model=self.config.ai_reply_model,
                 effort=self.config.ai_reply_effort,
             )
@@ -116,6 +116,16 @@ class AiReplyHook:
         finally:
             with self._lock:
                 self._inflight_keys.discard(key)
+
+
+def ai_reply_timeout_seconds(config: AppConfig) -> int | None:
+    try:
+        seconds = int(float(config.ai_reply_timeout_seconds or 0))
+    except (TypeError, ValueError):
+        return None
+    if seconds <= 0:
+        return None
+    return seconds
 
 
 def decide_ai_reply(config: AppConfig, row: dict[str, Any]) -> AiReplyDecision:

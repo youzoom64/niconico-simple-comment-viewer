@@ -134,24 +134,72 @@ def ensure_event_kind_preset_columns(conn: sqlite3.Connection) -> None:
 def seed_default_rules(conn: sqlite3.Connection) -> None:
     conn.executemany(
         """
-        INSERT OR IGNORE INTO voicevox_speed_rules(min_queue_size, speed_scale, enabled)
-        VALUES(?, ?, 1)
+        INSERT INTO voicevox_speed_rules(min_queue_size, speed_scale, enabled)
+        SELECT ?, ?, 1
+        WHERE NOT EXISTS (
+            SELECT 1 FROM voicevox_speed_rules
+            WHERE min_queue_size = ? AND speed_scale = ? AND enabled = 1
+        )
         """,
-        [(1, 1.2), (10, 2.0), (20, 3.0)],
+        [(1, 1.2, 1, 1.2), (10, 2.0, 10, 2.0), (20, 3.0, 20, 3.0)],
     )
     conn.executemany(
         """
-        INSERT OR IGNORE INTO regex_rules(name, pattern, replacement, target, priority)
-        VALUES(?, ?, ?, ?, ?)
+        INSERT INTO regex_rules(name, pattern, replacement, target, priority)
+        SELECT ?, ?, ?, ?, ?
+        WHERE NOT EXISTS (
+            SELECT 1 FROM regex_rules
+            WHERE name = ? AND pattern = ? AND replacement = ? AND target = ? AND priority = ? AND enabled = 1
+        )
         """,
         [
-            ("URL省略", r"https?://\S+", "URL", "speech", 10),
-            ("www変換", r"w+", "笑", "speech", 20),
-            ("拍手変換", r"8{3,}", "拍手", "speech", 30),
+            ("URL省略", r"https?://\S+", "URL", "speech", 10, "URL省略", r"https?://\S+", "URL", "speech", 10),
+            ("www変換", r"w+", "笑", "speech", 20, "www変換", r"w+", "笑", "speech", 20),
+            ("拍手変換", r"8{3,}", "拍手", "speech", 30, "拍手変換", r"8{3,}", "拍手", "speech", 30),
         ],
+    )
+
+
+def deduplicate_rule_tables(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        DELETE FROM voicevox_speed_rules
+        WHERE id NOT IN (
+            SELECT MIN(id)
+            FROM voicevox_speed_rules
+            GROUP BY min_queue_size, speed_scale, enabled
+        )
+        """
+    )
+    conn.execute(
+        """
+        DELETE FROM regex_rules
+        WHERE id NOT IN (
+            SELECT MIN(id)
+            FROM regex_rules
+            GROUP BY name, pattern, replacement, target, priority, enabled
+        )
+        """
+    )
+
+
+def ensure_rule_unique_indexes(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_voicevox_speed_rules_unique_definition
+        ON voicevox_speed_rules(min_queue_size, speed_scale, enabled)
+        """
+    )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_regex_rules_unique_definition
+        ON regex_rules(name, pattern, replacement, target, priority, enabled)
+        """
     )
 
 
 def initialize_database(conn: sqlite3.Connection) -> None:
     create_schema(conn)
+    deduplicate_rule_tables(conn)
+    ensure_rule_unique_indexes(conn)
     seed_default_rules(conn)

@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QFileDialog, QCheckBox, QComboBox, QDoubleSpinBox, Q
 
 from app.core.config import AppConfig
 from app.gui.common.combo_box import NoWheelComboBox
+from app.gui.common.font_combo import FontFamilyCombo
 from app.gui.common.github_skin_picker import select_github_skin
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
 from app.services.chrome_debug import get_profiles
@@ -40,7 +41,7 @@ class BasicSettingsTab(QWidget):
         self.skin_width_input.setRange(1, 4096)
         self.skin_height_input = QSpinBox()
         self.skin_height_input.setRange(1, 512)
-        self.font_family_input = QLineEdit()
+        self.font_family_input = FontFamilyCombo()
         self.font_size_input = QSpinBox()
         self.font_size_input.setRange(6, 128)
         self.font_color_input = QLineEdit()
@@ -69,7 +70,7 @@ class BasicSettingsTab(QWidget):
         self.list_name_width_input.setSingleStep(5)
         self.list_name_width_input.setPageStep(20)
         self.list_name_width_label = QLabel("")
-        self.list_font_family_input = QLineEdit()
+        self.list_font_family_input = FontFamilyCombo()
         self.list_name_font_size_input = QComboBox()
         self.list_text_font_size_input = QComboBox()
         for size in list_font_size_options():
@@ -92,7 +93,7 @@ class BasicSettingsTab(QWidget):
         self.ai_reply_trigger_prefix_input = QLineEdit()
         self.ai_reply_trigger_prefix_input.setPlaceholderText("例: >AI")
         self.ai_reply_timeout_input = QDoubleSpinBox()
-        self.ai_reply_timeout_input.setRange(10.0, 3600.0)
+        self.ai_reply_timeout_input.setRange(0.0, 3600.0)
         self.ai_reply_timeout_input.setSingleStep(10.0)
         self.ai_reply_model_input = QLineEdit()
         self.ai_reply_model_input.setPlaceholderText("空ならCodex既定")
@@ -205,7 +206,7 @@ class BasicSettingsTab(QWidget):
         form.addRow("", self.ai_reply_enabled_input)
         form.addRow("個別反応ルール", self.ai_reply_rules_input)
         form.addRow("AI呼び出し接頭辞", self.ai_reply_trigger_prefix_input)
-        form.addRow("Codex timeout秒", self.ai_reply_timeout_input)
+        form.addRow("Codex timeout秒 (0=なし)", self.ai_reply_timeout_input)
         form.addRow("Codex model", self.ai_reply_model_input)
         form.addRow("Codex effort", self.ai_reply_effort_input)
         note = QLabel("キーワード一致、または接頭辞で始まるコメントにCodexで返信を作り、同じセッション履歴を保存して投稿する。")
@@ -293,7 +294,7 @@ class BasicSettingsTab(QWidget):
         self.list_icon_size_input.valueChanged.connect(self.schedule_list_auto_save)
         self.list_name_width_input.valueChanged.connect(self.update_list_name_width_label)
         self.list_name_width_input.valueChanged.connect(self.schedule_list_auto_save)
-        self.list_font_family_input.textChanged.connect(self.schedule_list_auto_save)
+        self.list_font_family_input.currentTextChanged.connect(self.schedule_list_auto_save)
         self.list_name_font_size_input.currentIndexChanged.connect(self.schedule_list_auto_save)
         self.list_text_font_size_input.currentIndexChanged.connect(self.schedule_list_auto_save)
         self.list_name_color_input.textChanged.connect(self.schedule_list_auto_save)
@@ -323,7 +324,7 @@ class BasicSettingsTab(QWidget):
             self.skin_path_input.setText(config.skin_path)
             self.skin_width_input.setValue(int(config.skin_width))
             self.skin_height_input.setValue(int(config.skin_height))
-            self.font_family_input.setText(config.font_family)
+            self.font_family_input.set_current_font_family(config.font_family)
             self.font_size_input.setValue(int(config.font_size))
             self.font_color_input.setText(config.font_color)
             self.speed_base_input.setValue(float(config.voice_speed_base_scale))
@@ -336,7 +337,7 @@ class BasicSettingsTab(QWidget):
             self.list_icon_size_input.setValue(int(config.list_icon_size))
             self.list_name_width_input.setValue(int(config.list_name_width))
             self.update_list_name_width_label(int(config.list_name_width))
-            self.list_font_family_input.setText(config.list_font_family)
+            self.list_font_family_input.set_current_font_family(config.list_font_family)
             set_combo_int(self.list_name_font_size_input, int(config.list_name_font_size))
             set_combo_int(self.list_text_font_size_input, int(config.list_text_font_size))
             self.list_name_color_input.setText(config.list_name_color)
@@ -479,7 +480,7 @@ class BasicSettingsTab(QWidget):
                 "skin_path": self.skin_path_input.text().strip() or "assets/skin_5.png",
                 "skin_width": int(self.skin_width_input.value()),
                 "skin_height": int(self.skin_height_input.value()),
-                "font_family": self.font_family_input.text().strip() or "Yu Gothic UI",
+                "font_family": self.font_family_input.current_font_family() or "Yu Gothic UI",
                 "font_size": int(self.font_size_input.value()),
                 "font_color": self.font_color_input.text().strip() or "#ffffff",
                 "voice_speed_base_scale": float(self.speed_base_input.value()),
@@ -490,7 +491,7 @@ class BasicSettingsTab(QWidget):
                 "list_show_icons": self.list_show_icons_input.isChecked(),
                 "list_icon_size": int(self.list_icon_size_input.value()),
                 "list_name_width": int(self.list_name_width_input.value()),
-                "list_font_family": self.list_font_family_input.text().strip() or "Yu Gothic UI",
+                "list_font_family": self.list_font_family_input.current_font_family() or "Yu Gothic UI",
                 "list_name_font_size": combo_int(self.list_name_font_size_input, 20),
                 "list_text_font_size": combo_int(self.list_text_font_size_input, 22),
                 "list_name_color": self.list_name_color_input.text().strip() or "#8fd3ff",

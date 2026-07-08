@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QApplication, QWidget
 
 
 def export_window_state(window: QWidget) -> dict[str, int]:
@@ -24,4 +24,12 @@ def restore_window_state(window: QWidget, state: dict[str, Any]) -> None:
     except (TypeError, ValueError):
         return
     if width >= 600 and height >= 400:
+        screen = window.screen() or QApplication.primaryScreen()
+        if screen is not None:
+            available = screen.availableGeometry()
+            width = min(width, max(600, available.width()))
+            height = min(height, max(400, available.height()))
+        else:
+            width = min(width, 1600)
+            height = min(height, 1000)
         window.resize(width, height)

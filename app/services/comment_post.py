@@ -14,7 +14,7 @@ import requests
 import websockets
 
 
-WATCH_APP_DB_PATH = Path(r"F:\Niconico\niconico-watch-app\data\tracker.db")
+WATCH_APP_DB_PATH = Path(__file__).resolve().parents[3] / "niconico-watch-app" / "data" / "tracker.db"
 
 
 class CommentPostError(RuntimeError):

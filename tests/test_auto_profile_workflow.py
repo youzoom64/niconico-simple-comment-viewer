@@ -18,6 +18,7 @@ from app.services.auto_profile import (
     next_numeric_skin_id,
     parse_auto_profile_ai_json,
     render_auto_profile_skin,
+    run_auto_profile_ai_with_response,
 )
 
 
@@ -78,6 +79,27 @@ class AutoProfileWorkflowTests(unittest.TestCase):
         self.assertEqual(13, plan.voice_id)
         self.assertEqual(("#111111", "#d8b45a"), plan.palette)
 
+    def test_run_ai_with_response_keeps_raw_analysis_text(self) -> None:
+        context = collect_auto_profile_context_from_rows({"raw_user_id": "1234"}, [{"content": "hello"}])
+        request = build_auto_profile_ai_request(context)
+
+        result = run_auto_profile_ai_with_response(
+            request,
+            runner=lambda _prompt: json.dumps(
+                {
+                    "display_name": "太郎",
+                    "persona_summary": "短く返す",
+                    "skin": {"concept": "青い帯", "prompt": "blue band", "palette": ["#0000ff"]},
+                    "font": {"id": 1},
+                    "voice": {"id": 3},
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+        self.assertEqual("太郎", result.plan.display_name)
+        self.assertIn("persona_summary", result.raw_response)
+
     def test_build_comment_setting_command_sanitizes_display_name(self) -> None:
         command = build_comment_setting_command("＠太郎{}", skin_id=56, font_id=16, voice_id=13)
 
@@ -103,6 +125,8 @@ class AutoProfileWorkflowTests(unittest.TestCase):
             def fake_runner(prompt: str) -> str:
                 self.assertIn("依頼です。", prompt)
                 self.assertIn('"output_path"', prompt)
+                self.assertIn('"font_candidates"', prompt)
+                self.assertIn('"voice_candidates"', prompt)
                 from PIL import Image
 
                 Image.new("RGBA", (512, 32), (234, 237, 225, 255)).save(output_path)
@@ -113,6 +137,8 @@ class AutoProfileWorkflowTests(unittest.TestCase):
                 output_path,
                 skin_spec=SkinSpec(),
                 icon_path="J:/tmp/icon.jpg",
+                font_options=(FontOption(13, "Reggae One"),),
+                voice_options=(VoiceOption(11, "テスト"),),
                 runner=fake_runner,
             )
 

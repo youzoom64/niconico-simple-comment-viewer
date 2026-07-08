@@ -20,10 +20,12 @@ def render_auto_profile_skin(
     skin_spec: Any = None,
     icon_path: str = "",
     icon_summary: dict[str, Any] | None = None,
+    font_options: Any = (),
+    voice_options: Any = (),
     workdir: Path | None = None,
     model: str = "",
     effort: str = "",
-    timeout_seconds: int = 300,
+    timeout_seconds: int | None = None,
     runner: SkinRunner | None = None,
     evidence_path: Path | None = None,
     log: LogSink = NullLogSink,
@@ -34,6 +36,8 @@ def render_auto_profile_skin(
         skin_spec=skin_spec,
         icon_path=icon_path,
         icon_summary=icon_summary,
+        font_options=font_options,
+        voice_options=voice_options,
         workdir=workdir,
         model=model,
         effort=effort,
@@ -51,10 +55,12 @@ def create_auto_profile_skin_with_codex(
     skin_spec: Any = None,
     icon_path: str = "",
     icon_summary: dict[str, Any] | None = None,
+    font_options: Any = (),
+    voice_options: Any = (),
     workdir: Path | None = None,
     model: str = "",
     effort: str = "",
-    timeout_seconds: int = 300,
+    timeout_seconds: int | None = None,
     runner: SkinRunner | None = None,
     evidence_path: Path | None = None,
     log: LogSink = NullLogSink,
@@ -70,6 +76,8 @@ def create_auto_profile_skin_with_codex(
         height=height,
         icon_path=icon_path,
         icon_summary=icon_summary or {},
+        font_options=font_options,
+        voice_options=voice_options,
     )
     log_execution(log, "CodexスキンPNG生成", level="INFO", path=output_path, width=width, height=height)
     command: list[str] = []
@@ -84,7 +92,8 @@ def create_auto_profile_skin_with_codex(
         returncode = result.returncode
         if not result.ok:
             log_error(log, "CodexスキンPNG生成失敗", code=result.returncode, stderr=result.stderr[-300:])
-            raise RuntimeError(f"skin generation Codex failed: {result.returncode}")
+            detail = result.stderr.strip() or f"returncode={result.returncode}"
+            raise RuntimeError(f"skin generation Codex failed: {detail}")
         text = result.text
     actual_width, actual_height, mode = inspect_png(output_path)
     if (actual_width, actual_height) != (width, height):
@@ -115,6 +124,8 @@ def build_codex_skin_prompt(
     height: int,
     icon_path: str,
     icon_summary: dict[str, Any],
+    font_options: Any = (),
+    voice_options: Any = (),
 ) -> str:
     payload = {
         "output_path": str(output_path),
@@ -125,6 +136,10 @@ def build_codex_skin_prompt(
         "skin_concept": getattr(plan, "skin_concept", ""),
         "skin_prompt": getattr(plan, "skin_prompt", ""),
         "palette": list(getattr(plan, "palette", ()) or ()),
+        "selected_font_id": getattr(plan, "font_id", ""),
+        "selected_voice_id": getattr(plan, "voice_id", ""),
+        "font_candidates": [object_to_public_dict(item) for item in font_options or ()],
+        "voice_candidates": [object_to_public_dict(item) for item in voice_options or ()],
         "icon_path": str(icon_path or ""),
         "icon_summary": icon_summary,
     }
@@ -136,13 +151,25 @@ def build_codex_skin_prompt(
         この情報をもとに、512x32 のニコニコ/OBSコメント用スキンPNGを作成してください。
         返答は次のJSONだけにしてください。
         {
+          "ok": true,
           "path": "生成したPNGファイルのパス",
           "width": 512,
-          "height": 32
+          "height": 32,
+          "notes": "短い説明"
         }
         """
     ).strip()
     return f"{header}\n\n入力JSON:\n{input_json}"
+
+
+def object_to_public_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return {str(key): item for key, item in value.items() if not str(key).startswith("_")}
+    result: dict[str, Any] = {}
+    for key in ("id", "family", "label", "description"):
+        if hasattr(value, key):
+            result[key] = getattr(value, key)
+    return result
 
 
 def inspect_png(path: Path) -> tuple[int, int, str]:

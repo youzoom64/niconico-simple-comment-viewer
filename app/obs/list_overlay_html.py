@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.obs.google_fonts import render_google_fonts_head_links
+
 
 def render_comment_list_html() -> str:
     return """<!doctype html>
@@ -8,6 +10,7 @@ def render_comment_list_html() -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Simple Comment Viewer List</title>
+__GOOGLE_FONTS_HEAD__
 <style>
 :root {
   --page-background: rgba(0, 0, 0, 1);
@@ -259,4 +262,4 @@ poll();
 </script>
 </body>
 </html>
-"""
+""".replace("__GOOGLE_FONTS_HEAD__", render_google_fonts_head_links())

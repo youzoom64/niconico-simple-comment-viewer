@@ -42,7 +42,7 @@ class AppConfig:
     ai_reply_keywords: str = ""
     ai_reply_rules: str = ""
     ai_reply_trigger_prefix: str = ">AI"
-    ai_reply_timeout_seconds: float = 10.0
+    ai_reply_timeout_seconds: float = 0.0
     ai_reply_model: str = ""
     ai_reply_effort: str = ""
     tag_change_enabled: bool = False
@@ -109,7 +109,7 @@ class AppConfig:
             "ai_reply_keywords": str(data.get("ai_reply_keywords") or ""),
             "ai_reply_rules": str(data.get("ai_reply_rules") or data.get("ai_reply_keywords") or ""),
             "ai_reply_trigger_prefix": str(data.get("ai_reply_trigger_prefix") or ">AI"),
-            "ai_reply_timeout_seconds": float(data.get("ai_reply_timeout_seconds") or 300.0),
+            "ai_reply_timeout_seconds": float(data.get("ai_reply_timeout_seconds") or 0.0),
             "ai_reply_model": str(data.get("ai_reply_model") or ""),
             "ai_reply_effort": str(data.get("ai_reply_effort") or ""),
             "tag_change_enabled": bool(data.get("tag_change_enabled", False)),

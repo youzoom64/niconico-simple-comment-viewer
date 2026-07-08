@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from app.core.paths import APP_PATHS
 from app.domain.output.render_packet import RenderPacket
 from app.gui.user_icons import cached_user_icon_path
+from app.obs.google_fonts import render_google_fonts_head_links
 from app.obs.list_overlay_html import render_comment_list_html
 from app.settings.store import JsonSettingsStore
 
@@ -276,6 +277,7 @@ def render_overlay_html() -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Simple Comment Viewer Overlay</title>
+__GOOGLE_FONTS_HEAD__
 <style>
 html, body {
   margin: 0;
@@ -444,4 +446,4 @@ poll();
 </script>
 </body>
 </html>
-"""
+""".replace("__GOOGLE_FONTS_HEAD__", render_google_fonts_head_links())

@@ -79,6 +79,12 @@ class AutoProfilePlan:
 
 
 @dataclass(frozen=True, slots=True)
+class AutoProfileAiResult:
+    plan: AutoProfilePlan
+    raw_response: str
+
+
+@dataclass(frozen=True, slots=True)
 class UploadedSkin:
     skin_id: int
     local_path: Path
@@ -233,10 +239,29 @@ def run_auto_profile_ai(
     *,
     model: str = "",
     effort: str = "",
-    timeout_seconds: int = 300,
+    timeout_seconds: int | None = None,
     runner: AiRunner | None = None,
     log: LogSink = NullLogSink,
 ) -> AutoProfilePlan:
+    return run_auto_profile_ai_with_response(
+        request,
+        model=model,
+        effort=effort,
+        timeout_seconds=timeout_seconds,
+        runner=runner,
+        log=log,
+    ).plan
+
+
+def run_auto_profile_ai_with_response(
+    request: AutoProfileRequest,
+    *,
+    model: str = "",
+    effort: str = "",
+    timeout_seconds: int | None = None,
+    runner: AiRunner | None = None,
+    log: LogSink = NullLogSink,
+) -> AutoProfileAiResult:
     log_execution(log, "AI自動演出判定", level="INFO", timeout=timeout_seconds, model=model or "default")
     if runner is not None:
         text = runner(request.prompt)
@@ -244,11 +269,12 @@ def run_auto_profile_ai(
         result = run_codex_exec(request.prompt, timeout_seconds=timeout_seconds, model=model, effort=effort)
         if not result.ok:
             log_error(log, "AI自動演出判定失敗", code=result.returncode, stderr=result.stderr[-300:])
-            raise RuntimeError(f"auto profile AI failed: {result.returncode}")
+            detail = result.stderr.strip() or f"returncode={result.returncode}"
+            raise RuntimeError(f"auto profile AI failed: {detail}")
         text = result.text
     plan = parse_auto_profile_ai_json(text, log=log)
     log_result(log, "AI自動演出判定", font=plan.font_id, voice=plan.voice_id, display_name=plan.display_name or "-")
-    return plan
+    return AutoProfileAiResult(plan=plan, raw_response=text)
 
 
 def parse_auto_profile_ai_json(text: str, *, log: LogSink = NullLogSink) -> AutoProfilePlan:
@@ -301,7 +327,7 @@ def upload_auto_profile_skin_to_git_repo(
     run_command(["git", "add", str(destination.relative_to(repo_dir))], cwd=repo_dir)
     status = run_command(["git", "status", "--porcelain", str(destination.relative_to(repo_dir))], cwd=repo_dir)
     if status.stdout.strip():
-        run_command(["git", "commit", "-m", commit_message], cwd=repo_dir)
+        run_command(["git", "commit", "-m", commit_message, "--", str(destination.relative_to(repo_dir))], cwd=repo_dir)
         log_execution(log, "スキンGitHub push", level="INFO", branch=branch, skin=destination.name)
         run_command(["git", "push", "-u", "origin", branch], cwd=repo_dir)
     else:

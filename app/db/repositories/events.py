@@ -111,3 +111,120 @@ def list_events(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]
             (limit,),
         )
     )
+
+
+def list_listener_events(
+    conn: sqlite3.Connection,
+    identity_values: tuple[tuple[str, str], ...],
+    *,
+    lv: str = "",
+    event_kind: str = "",
+    text: str = "",
+    limit: int = 1000,
+) -> list[sqlite3.Row]:
+    identity_clause, params = build_listener_identity_clause(identity_values)
+    if not identity_clause:
+        return []
+
+    clauses = [identity_clause]
+    if lv.strip():
+        clauses.append("n.lv = ?")
+        params.append(lv.strip())
+    if event_kind.strip():
+        clauses.append("n.event_kind LIKE ?")
+        params.append(f"%{event_kind.strip()}%")
+    if text.strip():
+        like_text = f"%{text.strip()}%"
+        clauses.append(
+            "(COALESCE(n.content, '') LIKE ? OR COALESCE(n.display_text, '') LIKE ? OR COALESCE(n.speech_text, '') LIKE ?)"
+        )
+        params.extend([like_text, like_text, like_text])
+
+    max_rows = max(1, min(int(limit or 1000), 10000))
+    params.append(max_rows)
+    sql = f"""
+        SELECT n.*, COALESCE(r.received_at, n.created_at) AS posted_at
+        FROM normalized_events n
+        LEFT JOIN raw_events r ON r.id = n.raw_event_id
+        WHERE {' AND '.join(clauses)}
+        ORDER BY COALESCE(r.received_at, n.created_at, '') DESC, n.id DESC
+        LIMIT ?
+    """
+    return list(conn.execute(sql, params))
+
+
+def list_listener_lvs(
+    conn: sqlite3.Connection,
+    identity_values: tuple[tuple[str, str], ...],
+    *,
+    limit: int = 200,
+) -> list[sqlite3.Row]:
+    identity_clause, params = build_listener_identity_clause(identity_values)
+    if not identity_clause:
+        return []
+
+    max_rows = max(1, min(int(limit or 200), 1000))
+    params.append(max_rows)
+    sql = f"""
+        SELECT
+            n.lv,
+            COUNT(*) AS event_count,
+            MAX(COALESCE(r.received_at, n.created_at, '')) AS latest_at
+        FROM normalized_events n
+        LEFT JOIN raw_events r ON r.id = n.raw_event_id
+        WHERE {identity_clause} AND COALESCE(n.lv, '') != ''
+        GROUP BY n.lv
+        ORDER BY latest_at DESC, event_count DESC, n.lv DESC
+        LIMIT ?
+    """
+    return list(conn.execute(sql, params))
+
+
+def list_listener_event_kinds(
+    conn: sqlite3.Connection,
+    identity_values: tuple[tuple[str, str], ...],
+    *,
+    lv: str = "",
+    limit: int = 100,
+) -> list[sqlite3.Row]:
+    identity_clause, params = build_listener_identity_clause(identity_values)
+    if not identity_clause:
+        return []
+
+    clauses = [identity_clause, "COALESCE(n.event_kind, '') != ''"]
+    if lv.strip():
+        clauses.append("n.lv = ?")
+        params.append(lv.strip())
+
+    max_rows = max(1, min(int(limit or 100), 1000))
+    params.append(max_rows)
+    sql = f"""
+        SELECT
+            n.event_kind,
+            COUNT(*) AS event_count,
+            MAX(COALESCE(r.received_at, n.created_at, '')) AS latest_at
+        FROM normalized_events n
+        LEFT JOIN raw_events r ON r.id = n.raw_event_id
+        WHERE {' AND '.join(clauses)}
+        GROUP BY n.event_kind
+        ORDER BY latest_at DESC, event_count DESC, n.event_kind ASC
+        LIMIT ?
+    """
+    return list(conn.execute(sql, params))
+
+
+def build_listener_identity_clause(identity_values: tuple[tuple[str, str], ...]) -> tuple[str, list[Any]]:
+    allowed_columns = {"user_id", "raw_user_id", "hashed_user_id"}
+    clauses: list[str] = []
+    params: list[Any] = []
+    for column, value in identity_values:
+        if column not in allowed_columns:
+            continue
+        clean_value = str(value or "").strip()
+        if not clean_value:
+            continue
+        clauses.append(f"COALESCE(n.{column}, '') = ?")
+        params.append(clean_value)
+    if not clauses:
+        return "", []
+    return "(" + " OR ".join(clauses) + ")", params

@@ -1,0 +1,54 @@
+# VOICEVOXキャラクター視覚特徴メモ
+
+出典: https://voicevox.hiroshiba.jp/
+
+このメモは、公式サイトのキャラクターカード画像を目視してまとめたものです。公式設定の断定ではなく、コメントビューア側で「声・スキン・フォント」を合わせるための見た目特徴と雰囲気タグとして使う想定です。
+
+画像は `assets/voicevox_characters/` に保存した 320x320 の小さい WebP を参照しています。
+
+| No | キャラクター | 画像 | 見た目特徴 | 雰囲気タグ |
+|---:|---|---|---|---|
+| 1 | 四国めたん | `assets/voicevox_characters/01_shikoku_metan.webp` | ピンクの長いツインテール、白黒のフリル多めなメイド服、ハート形の髪飾り。華やかで装飾的。 | お嬢様、メイド、可憐、甘め |
+| 2 | ずんだもん | `assets/voicevox_characters/02_zundamon.webp` | 鮮やかな緑髪、葉のような耳飾り、緑のサロペット、丸い豆のしっぽ風パーツ。 | マスコット、子供っぽい、元気、軽い |
+| 3 | 春日部つむぎ | `assets/voicevox_characters/03_kasukabe_tsumugi.webp` | 明るいベージュ髪、黄色系の大きめジャケット、制服風スカート。表情は明るくラフ。 | ギャル寄り、カジュアル、明るい、学生 |
+| 4 | 雨晴はう | `assets/voicevox_characters/04_amehare_hau.webp` | 水色のツインテール、ナースキャップ、白とピンクの医療系衣装。丸い目で親しみやすい。 | ナース、優しい、かわいい、癒し |
+| 5 | 波音リツ | `assets/voicevox_characters/05_namine_ritsu.webp` | 赤い長髪、ミニハット、黒基調のステージ衣装、指先まで見せるポーズ。 | クール、ロック、舞台感、強め |
+| 6 | 玄野武宏 | `assets/voicevox_characters/06_kurono_takehiro.webp` | 緑がかった短髪、袖なしトップス、肩を落としたジャケット。すっきりした青年感。 | 爽やか、落ち着き、青年、自然体 |
+| 7 | 白上虎太郎 | `assets/voicevox_characters/07_shirakami_kotaro.webp` | 白髪の少年、黒白ジャケット、黄色アクセント。少しスポーティで若い。 | 少年、活発、変声期、軽快 |
+| 8 | 青山龍星 | `assets/voicevox_characters/08_aoyama_ryusei.webp` | 青い短髪、青いパーカー、筋の通った体格と表情。大人の男性感が強い。 | 低音、頼れる、兄貴分、重厚 |
+| 9 | 冥鳴ひまり | `assets/voicevox_characters/09_meimei_himari.webp` | 灰色の長い髪、黒いワンピース、紫の瞳と花飾り。ゴシック寄りで静か。 | ゴシック、柔らかい、影、上品 |
+| 10 | 九州そら | `assets/voicevox_characters/10_kyushu_sora.webp` | 紫からピンクのグラデ髪、黒と銀の近未来的な衣装、楽しげな表情。 | 大人、未来感、余裕、明るい |
+| 11 | もち子さん | `assets/voicevox_characters/11_mochiko_san.webp` | 白銀髪、黒白の制服風衣装、丸い帽子と機械っぽい小物。整った印象。 | 穏やか、清潔感、案内役、精密 |
+| 12 | 剣崎雌雄 | `assets/voicevox_characters/12_kenzaki_mesuo.webp` | サメのような頭部、白衣、緑シャツ。かなり異形でコミカル。 | 変わり種、医者風、不思議、ネタ向き |
+| 13 | WhiteCUL | `assets/voicevox_characters/13_whitecul.webp` | 白い長髪、雪や氷を思わせる白青の衣装、透明感の強い配色。 | 雪、清楚、涼しい、儚い |
+| 14 | 後鬼 | `assets/voicevox_characters/14_goki.webp` | 青いロングヘア、眼鏡、濃紺のスーツ風衣装。大人の女性感が強い。 | 包容力、大人、妖艶、知的 |
+| 15 | No.7 | `assets/voicevox_characters/15_number_seven.webp` | 白銀髪、機械的な髪飾り、黒白と紫の近未来衣装。整ったクール系。 | 凛々しい、SF、冷静、シャープ |
+| 16 | ちび式じい | `assets/voicevox_characters/16_chibishikijii.webp` | 青い龍のような小柄キャラ、角と和風衣装、丸い体形。 | マスコット、親しみ、和風、ゆるい |
+| 17 | 櫻歌ミコ | `assets/voicevox_characters/17_ouka_miko.webp` | ピンクの動物耳フード、淡いピンクの衣装、小柄で丸い印象。 | 少女、かわいい、ふわふわ、甘い |
+| 18 | 小夜/SAYO | `assets/voicevox_characters/18_sayo.webp` | 白い猫耳風の髪、黒いセーラー寄り衣装、赤い瞳。小さく落ち着いた印象。 | 猫、静か、温厚、夜 |
+| 19 | ナースロボ＿タイプT | `assets/voicevox_characters/19_nurse_robot_type_t.webp` | ベージュ髪のナース服、浮遊する丸い補助ロボ。医療ロボらしい無機質さ。 | ナース、ロボ、慎重、冷静 |
+| 20 | †聖騎士 紅桜† | `assets/voicevox_characters/20_holy_knight_benizakura.webp` | 白銀の全身甲冑、赤いマント、剣。ファンタジー色が非常に強い。 | 騎士、英雄、重厚、熱血 |
+| 21 | 雀松朱司 | `assets/voicevox_characters/21_wakamatsu_akashi.webp` | 赤髪の男性、赤系ジャケット、落ち着いた立ち姿。親しみやすい成人男性。 | 穏やか、安定、日常、柔らかい |
+| 22 | 麒ヶ島宗麟 | `assets/voicevox_characters/22_kigashima_sourin.webp` | 金茶の髪と髭、黄色い和装、ゆったりした姿勢。渋い年長者感。 | おじさん、和風、余裕、渋い |
+| 23 | 春歌ナナ | `assets/voicevox_characters/23_haruka_nana.webp` | ピンクのツインテール、白い大きめパーカー、カラフルなハート装飾。 | ポップ、元気、幼い、弾む |
+| 24 | 猫使アル | `assets/voicevox_characters/24_nekotsuka_aru.webp` | 赤い猫耳、赤黒の衣装、片目が隠れる髪型。力強い猫系。 | 猫、気さく、厚み、赤、活発 |
+| 25 | 猫使ビィ | `assets/voicevox_characters/25_nekotsuka_bii.webp` | 青い猫耳、青黒の衣装、片目が隠れる長い水色髪。アルより静かな印象。 | 猫、ピュア、青、控えめ、透明感 |
+| 26 | 中国うさぎ | `assets/voicevox_characters/26_chugoku_usagi.webp` | 長い黒髪、白いゆったりした服、大きなうさぎのぬいぐるみ。内向的に見える。 | うさぎ、幽玄、初々しい、静か |
+| 27 | 栗田まろん | `assets/voicevox_characters/27_kurita_maron.webp` | 茶髪のボブ、黒い制服風トップス、腕組み。中性的で落ち着いた学生感。 | 中性、深み、学生、控えめ |
+| 28 | あいえるたん | `assets/voicevox_characters/28_iel_tan.webp` | オレンジから紫の髪、白と黒の近未来風衣装、明るい表情。 | テック、軽快、明るい、案内役 |
+| 29 | 満別花丸 | `assets/voicevox_characters/29_manbetsu_hanamaru.webp` | 白い帽子、大きな黒袖、赤い目、民俗衣装風。素朴で生命感がある。 | 民俗、元気、土着感、朗らか |
+| 30 | 琴詠ニア | `assets/voicevox_characters/30_kotoyomi_nia.webp` | 黒い巻き髪、和服とストリートの混ざった衣装、透明感ある袖。 | 神秘、無機質、和モダン、滑らか |
+| 31 | Voidoll | `assets/voicevox_characters/31_voidoll.webp` | 白とシアンのロボット体、丸いモニター顔、スピード感ある姿勢。 | ロボ、電子、無機質、軽快 |
+| 32 | ぞん子 | `assets/voicevox_characters/32_zonko.webp` | 白いツインテール、赤い目、黒い大きめジャケット、ストリート感。 | ゾンビ、熱血、ありあり、派手 |
+| 33 | 中部つるぎ | `assets/voicevox_characters/33_chubu_tsurugi.webp` | 紫黒の武者風衣装、刀、角や髪飾り。堂々とした戦闘キャラ。 | 武者、凛然、存在感、強い |
+| 34 | 離途 | `assets/voicevox_characters/34_rito.webp` | 薄紫の髪、黒ジャケット、ケーブルやイヤホン風小物。静かで繊細。 | 内省、息遣い、夜、包む |
+| 35 | 黒沢冴白 | `assets/voicevox_characters/35_kurosawa_saejiro.webp` | 褐色肌、白髪、白パーカーとファー付き上着。自信のある青年男性。 | 張り、強気、ストリート、男性 |
+| 36 | ユーレイちゃん | `assets/voicevox_characters/36_yurei_chan.webp` | 淡い水色の髪、白青の軽い衣装、透けるような配色。浮遊感がある。 | 幽霊、柔和、揺蕩う、淡い |
+| 37 | 東北ずん子 | `assets/voicevox_characters/37_tohoku_zunko.webp` | 緑の長髪、和風の衣装、明るい笑顔。柔らかい姉系。 | 和風、愛嬌、しとやか、緑 |
+| 38 | 東北きりたん | `assets/voicevox_characters/38_tohoku_kiritan.webp` | 黒紫のボブ、和風袖、背中にきりたんぽ風の大きなパーツ。小柄だが落ち着く。 | 淡麗、つづまやか、妹系、和風 |
+| 39 | 東北イタコ | `assets/voicevox_characters/39_tohoku_itako.webp` | 白から水色の長髪、巫女風衣装、霊的な炎のような装飾。華やかで神秘的。 | 雅、霊感、余韻、姉系 |
+| 40 | あんこもん | `assets/voicevox_characters/40_ankomon.webp` | 黒赤のうさぎ耳、暗色ワンピース、腕組み。小さいが強気。 | 負けず嫌い、子供、暗め、跳ねる |
+| 41 | 夜語トバリ | `assets/voicevox_characters/41_yogataru_tobari.webp` | 黒いロングワンピース、青黒い短髪、静かな手振り。理知的で夜の印象。 | 論理的、ミステリアス、夜、冷静 |
+| 42 | 聴記ミタマ | `assets/voicevox_characters/42_yomihata_mitama.webp` | 白銀髪、白黒のクラシカルなメイド風ドレス、控えめな表情。 | 儚い、浮遊感、クラシカル、丁寧 |
+| 43 | 里石ユカ | `assets/voicevox_characters/43_satoishi_yuka.webp` | 黒髪とピンク髪の二人組に見える構図、灰色系の制服。対になる雰囲気。 | デュオ、学生、未実装感、対比 |
+
