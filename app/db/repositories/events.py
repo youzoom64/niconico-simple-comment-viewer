@@ -113,6 +113,64 @@ def list_events(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]
     )
 
 
+def list_events_by_lv(conn: sqlite3.Connection, lv: str, *, limit: int = 20000) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT
+            n.*,
+            COALESCE(r.source, '') AS source,
+            r.page_index AS page_index,
+            COALESCE(r.message_id, '') AS message_id,
+            COALESCE(r.received_at, n.created_at, '') AS at,
+            COALESCE(r.raw_json, '') AS raw_json
+        FROM normalized_events n
+        LEFT JOIN raw_events r ON r.id = n.raw_event_id
+        WHERE n.lv = ?
+        ORDER BY
+            CASE WHEN n.no GLOB '[0-9]*' THEN CAST(n.no AS INTEGER) ELSE 2147483647 END ASC,
+            COALESCE(r.received_at, n.created_at, '') ASC,
+            n.id ASC
+        LIMIT ?
+        """,
+        (str(lv or "").strip(), max(1, min(int(limit or 20000), 100000))),
+    ).fetchall()
+    return [event_row_to_display_dict(row) for row in rows]
+
+
+def event_row_to_display_dict(row: sqlite3.Row) -> dict[str, Any]:
+    payload = load_json_text(row["payload_json"])
+    raw = load_json_text(row["raw_json"])
+    return {
+        "source": str(row["source"] or ""),
+        "page_index": row["page_index"] if row["page_index"] is not None else "",
+        "message_id": str(row["message_id"] or ""),
+        "at": str(row["at"] or ""),
+        "kind": str(row["event_kind"] or "unknown"),
+        "no": str(row["no"] or ""),
+        "user_id": str(row["user_id"] or ""),
+        "raw_user_id": str(row["raw_user_id"] or ""),
+        "hashed_user_id": str(row["hashed_user_id"] or ""),
+        "account_status": str(row["account_status"] or ""),
+        "vpos": str(row["vpos"] or ""),
+        "commands": str(row["commands"] or ""),
+        "content": str(row["content"] or ""),
+        "display_text": str(row["display_text"] or row["content"] or ""),
+        "speech_text": str(row["speech_text"] or row["content"] or ""),
+        "payload": payload,
+        "raw": raw or payload,
+    }
+
+
+def load_json_text(value: Any) -> Any:
+    text = str(value or "").strip()
+    if not text:
+        return {}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {"_raw": text}
+
+
 def list_listener_events(
     conn: sqlite3.Connection,
     identity_values: tuple[tuple[str, str], ...],

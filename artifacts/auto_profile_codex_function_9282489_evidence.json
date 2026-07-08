@@ -1,0 +1,24 @@
+{
+  "codex_command": [
+    "C:\\Users\\youzo\\AppData\\Roaming\\npm\\codex.cmd",
+    "exec",
+    "--cd",
+    "J:\\utility\\Niconico\\niconico-simple-comment-viewer",
+    "--sandbox",
+    "danger-full-access",
+    "--output-last-message",
+    "J:\\utility\\Niconico\\niconico-simple-comment-viewer\\.simple_comment_viewer_ai\\codex_reply_0e86f6adf1f04d26aa98af50459ef883.txt",
+    "-"
+  ],
+  "codex_returncode": 0,
+  "stderr_tail": "d\n M start_silent.vbs\n M tests/test_event_repository.py\n?? app/gui/common/google_fonts.py\n?? app/gui/dialogs/listener_history.py\n?? app/obs/google_fonts.py\n?? app/profiles/listener_identity.py\n?? app/services/agent_process_watch.py\n?? app/services/auto_profile/\n?? artifacts/\n?? assets/skin_9282489_factcheck.png\n?? assets/voicevox_characters/\n?? docs/google_font_shape_catalog.md\n?? docs/google_font_shape_contact_sheet.png\n?? docs/voicevox_character_catalog.md\n?? docs/voicevox_character_images.md\n?? docs/voicevox_character_visual_features.md\n?? tests/test_agent_process_watch.py\n?? tests/test_auto_profile_workflow.py\n?? tests/test_google_fonts.py\n?? tests/test_listener_identity.py\n?? tests/test_obs_google_fonts.py\n?? tests/test_schema_rules.py\n\ncodex\n{\"ok\":true,\"path\":\"artifacts\\\\auto_profile_codex_function_9282489.png\",\"width\":512,\"height\":32,\"notes\":\"RGBA PNG verified; icon reference used for palette only; central lane kept clear with edge-only sepia ledger motifs.\"}\ntokens used\n33,822\n",
+  "prompt_sha256": "0ff5d49074477c77311547fffe7708fa77c3101f298c51dbbb312c1501f8a70d",
+  "raw_ai_response": "{\"ok\":true,\"path\":\"artifacts\\\\auto_profile_codex_function_9282489.png\",\"width\":512,\"height\":32,\"notes\":\"RGBA PNG verified; icon reference used for palette only; central lane kept clear with edge-only sepia ledger motifs.\"}",
+  "raw_ai_response_sha256": "f4401e1979c5cd4a34ae46d86653a22b2527b2f377502ae2353e61319798118b",
+  "png_path": "artifacts\\auto_profile_codex_function_9282489.png",
+  "png_exists": true,
+  "png_size": 5724,
+  "width": 512,
+  "height": 32,
+  "mode": "RGBA"
+}

@@ -1,0 +1,19 @@
+You are a separate Codex process. Create the actual bitmap PNG yourself.
+
+Task:
+- Generate a 512x32 RGBA PNG skin at this exact path:
+  J:\utility\Niconico\niconico-simple-comment-viewer\artifacts\auto_profile_codex_drawn_9282489.png
+- Use this local user icon image as a visual reference for color/mood:
+  J:\utility\Niconico\niconico-simple-comment-viewer\data\icon_cache\9282489.jpg
+- The target listener is raw_user_id 9282489 from lv350904957.
+- Persona summary from prior comment analysis:
+  Calm but sharp passerby/debater; focuses on objectivity, practical judgment, political/economic reasoning, and sometimes warns people when they are too absorbed.
+- Desired skin:
+  A narrow OBS comment skin, 512x32, with a clear central text lane. Use the icon's beige/sepia/brown feeling if the image supports it. Add subtle analytical/fact-check/ledger motifs at the edges only. No readable text in the image. Do not include a face. Do not infer real identity.
+
+Rules:
+- You must create the PNG file yourself. Do not only describe it.
+- Keep exact dimensions 512x32.
+- Do not modify any other project files.
+- You may use Python/Pillow or another local method.
+- After creating it, report only compact JSON with keys: ok, path, width, height, notes.

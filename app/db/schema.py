@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -92,12 +92,42 @@ def create_schema(conn: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS broadcast_history (
+            lv TEXT PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '',
+            broadcaster_id TEXT NOT NULL DEFAULT '',
+            broadcaster_name TEXT NOT NULL DEFAULT '',
+            program_status TEXT NOT NULL DEFAULT '',
+            started_at TEXT,
+            ended_at TEXT,
+            first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_connected_at TEXT,
+            last_fetched_at TEXT,
+            connected_count INTEGER NOT NULL DEFAULT 0,
+            fetched_count INTEGER NOT NULL DEFAULT 0,
+            event_count INTEGER NOT NULL DEFAULT 0,
+            last_jsonl_path TEXT,
+            last_json_path TEXT,
+            last_csv_path TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE INDEX IF NOT EXISTS idx_raw_events_lv_kind ON raw_events(lv, event_kind);
         CREATE INDEX IF NOT EXISTS idx_normalized_events_lv_kind ON normalized_events(lv, event_kind);
         CREATE INDEX IF NOT EXISTS idx_normalized_events_user_id ON normalized_events(user_id);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_normalized_events_raw_event_id
             ON normalized_events(raw_event_id)
             WHERE raw_event_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_broadcast_history_last_seen
+            ON broadcast_history(last_seen_at);
+        CREATE INDEX IF NOT EXISTS idx_broadcast_history_broadcaster_id
+            ON broadcast_history(broadcaster_id);
+        CREATE INDEX IF NOT EXISTS idx_broadcast_history_broadcaster_name
+            ON broadcast_history(broadcaster_name);
+        CREATE INDEX IF NOT EXISTS idx_broadcast_history_title
+            ON broadcast_history(title);
         """
     )
     conn.execute(
@@ -106,6 +136,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
     )
     ensure_live_user_profile_columns(conn)
     ensure_event_kind_preset_columns(conn)
+    ensure_broadcast_history_columns(conn)
 
 
 def ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
@@ -129,6 +160,20 @@ def ensure_event_kind_preset_columns(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "event_kind_presets", "font_color", "TEXT")
     ensure_column(conn, "event_kind_presets", "voicevox_speaker", "TEXT")
     ensure_column(conn, "event_kind_presets", "voicevox_style", "TEXT")
+
+
+def ensure_broadcast_history_columns(conn: sqlite3.Connection) -> None:
+    ensure_column(conn, "broadcast_history", "program_status", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "broadcast_history", "started_at", "TEXT")
+    ensure_column(conn, "broadcast_history", "ended_at", "TEXT")
+    ensure_column(conn, "broadcast_history", "last_connected_at", "TEXT")
+    ensure_column(conn, "broadcast_history", "last_fetched_at", "TEXT")
+    ensure_column(conn, "broadcast_history", "connected_count", "INTEGER NOT NULL DEFAULT 0")
+    ensure_column(conn, "broadcast_history", "fetched_count", "INTEGER NOT NULL DEFAULT 0")
+    ensure_column(conn, "broadcast_history", "event_count", "INTEGER NOT NULL DEFAULT 0")
+    ensure_column(conn, "broadcast_history", "last_jsonl_path", "TEXT")
+    ensure_column(conn, "broadcast_history", "last_json_path", "TEXT")
+    ensure_column(conn, "broadcast_history", "last_csv_path", "TEXT")
 
 
 def seed_default_rules(conn: sqlite3.Connection) -> None:

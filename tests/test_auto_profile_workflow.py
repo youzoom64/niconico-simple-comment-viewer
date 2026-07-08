@@ -59,6 +59,26 @@ class AutoProfileWorkflowTests(unittest.TestCase):
         self.assertEqual("財源の話をしろ", request.payload["comments"][0]["content"])
         self.assertEqual("J:/tmp/icon.jpg", request.payload["icon"]["local_path"])
 
+    def test_build_ai_request_uses_persona_memo_instead_of_comment_bundle(self) -> None:
+        context = collect_auto_profile_context_from_rows(
+            {"raw_user_id": "1234", "display_name": "太郎"},
+            [{"content": "これは送らない"}],
+        )
+
+        request = build_auto_profile_ai_request(
+            context,
+            persona_memo={
+                "display_name": "太郎",
+                "persona_summary": "冷静に助言する常連",
+                "speech_style": "短く現実的",
+                "tags": ["冷静", "助言型"],
+            },
+        )
+
+        self.assertEqual([], request.payload["comments"])
+        self.assertEqual("冷静に助言する常連", request.payload["target"]["persona_memo"]["persona_summary"])
+        self.assertIn("target.persona_memo", request.prompt)
+
     def test_parse_ai_json_ignores_wrapping_text(self) -> None:
         plan = parse_auto_profile_ai_json(
             """

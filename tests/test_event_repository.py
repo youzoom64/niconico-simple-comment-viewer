@@ -4,6 +4,7 @@ import sqlite3
 import unittest
 
 from app.db.repositories.events import (
+    list_events_by_lv,
     list_listener_event_kinds,
     list_listener_events,
     list_listener_lvs,
@@ -54,6 +55,36 @@ class EventRepositoryTests(unittest.TestCase):
         links = [row[0] for row in conn.execute("SELECT raw_event_id FROM normalized_events ORDER BY id")]
         self.assertEqual(2, len(set(links)))
         self.assertTrue(all(link is not None for link in links))
+
+    def test_list_events_by_lv_returns_display_rows(self) -> None:
+        conn = self.make_connection()
+        save_event_row(
+            conn,
+            "lv1",
+            {
+                "source": "backward",
+                "page_index": 2,
+                "message_id": "m1",
+                "at": "2026-07-09T01:00:00",
+                "kind": "chat",
+                "no": "10",
+                "user_id": "1234",
+                "raw_user_id": "1234",
+                "content": "保存済みコメント",
+                "payload": {"content": "保存済みコメント"},
+            },
+        )
+
+        rows = list_events_by_lv(conn, "lv1")
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("backward", rows[0]["source"])
+        self.assertEqual(2, rows[0]["page_index"])
+        self.assertEqual("chat", rows[0]["kind"])
+        self.assertEqual("10", rows[0]["no"])
+        self.assertEqual("1234", rows[0]["user_id"])
+        self.assertEqual("保存済みコメント", rows[0]["content"])
+        self.assertEqual({"content": "保存済みコメント"}, rows[0]["payload"])
 
     def test_list_listener_events_filters_by_identity_and_text(self) -> None:
         conn = self.make_connection()

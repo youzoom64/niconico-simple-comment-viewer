@@ -6,10 +6,12 @@ from typing import Any, Callable
 
 from app.core.logging import log_branch, log_error, log_execution, log_result
 from app.db.connection import database_session
+from app.db.repositories.broadcast_history import BroadcastHistoryMetadata
 from app.db.repositories.events import save_event_row
 from app.db.schema import initialize_database
 from app.events.normalizer import chunked_message_to_row
 from app.ndgr.output import save_rows
+from app.ndgr.program_info import enrich_history_metadata, program_info_to_history_metadata
 from app.ndgr.results import FetchResult
 
 
@@ -36,13 +38,15 @@ class LiveCommentStreamer:
 
         client = NDGRClient(self.lv, verbose=False, console_output=False)
         rows: list[dict[str, Any]] = []
+        metadata = BroadcastHistoryMetadata(lv=self.lv)
         try:
             info = await client.fetchNicoLiveProgramInfo()
+            metadata = enrich_history_metadata(self.lv, program_info_to_history_metadata(self.lv, info))
             title = getattr(info, "title", "")
             status = getattr(info, "status", "")
             if status == "ENDED":
                 log_branch(self.log, "終了済み放送なので接続しない", level="WARN", lv=self.lv, title=title)
-                return save_rows(self.lv, rows, self.log)
+                return save_rows(self.lv, rows, self.log, history_mode="stream", metadata=metadata)
 
             log_execution(self.log, "接続開始", level="INFO", lv=self.lv, status=status, title=title)
             view_uri = await client.fetchNDGRViewURI(info.webSocketUrl)
@@ -58,7 +62,7 @@ class LiveCommentStreamer:
             await self._stop_tasks(entries_task, active_segments)
             counts = Counter(str(row.get("kind") or "unknown") for row in rows)
             log_result(self.log, "接続終了", total=len(rows), kinds=dict(counts))
-            return save_rows(self.lv, rows, self.log)
+            return save_rows(self.lv, rows, self.log, history_mode="stream", metadata=metadata)
         finally:
             httpx_client = getattr(client, "httpx_client", None)
             close = getattr(httpx_client, "aclose", None)

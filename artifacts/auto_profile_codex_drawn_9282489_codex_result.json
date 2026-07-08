@@ -1,0 +1,21 @@
+{
+  "codex_returncode": 0,
+  "codex_command": [
+    "C:\\Users\\youzo\\AppData\\Roaming\\npm\\codex.cmd",
+    "exec",
+    "--cd",
+    "J:\\utility\\Niconico\\niconico-simple-comment-viewer",
+    "--sandbox",
+    "danger-full-access",
+    "--output-last-message",
+    "J:\\utility\\Niconico\\niconico-simple-comment-viewer\\.simple_comment_viewer_ai\\codex_reply_973350da59504b6db8b74a68cd5ee1ac.txt",
+    "-"
+  ],
+  "prompt_path": "J:\\utility\\Niconico\\niconico-simple-comment-viewer\\artifacts\\auto_profile_codex_drawn_9282489_prompt.txt",
+  "prompt_sha256": "19bea9e18e61bef39ce43e77e4df3857c4ea1ca9e57edbce57ba9a0a106e6907",
+  "raw_ai_response": "{\"ok\":true,\"path\":\"J:\\\\utility\\\\Niconico\\\\niconico-simple-comment-viewer\\\\artifacts\\\\auto_profile_codex_drawn_9282489.png\",\"width\":512,\"height\":32,\"notes\":\"RGBA PNG created with icon-derived beige/sepia mood, clear central text lane, subtle ledger/check motifs at edges only; no face or readable text.\"}",
+  "raw_ai_response_sha256": "aa3574b521145ca52333d4b76de0cef5804448d661a98be9e20498ce6325df2c",
+  "png_path": "J:\\utility\\Niconico\\niconico-simple-comment-viewer\\artifacts\\auto_profile_codex_drawn_9282489.png",
+  "png_exists": true,
+  "png_size": 5928
+}

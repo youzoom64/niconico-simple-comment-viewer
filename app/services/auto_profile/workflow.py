@@ -183,8 +183,15 @@ def collect_auto_profile_context_from_rows(
     )
 
 
-def build_auto_profile_ai_request(context: AutoProfileContext, *, max_comments: int = 120, log: LogSink = NullLogSink) -> AutoProfileRequest:
-    comments = context.comments[: max(1, max_comments)]
+def build_auto_profile_ai_request(
+    context: AutoProfileContext,
+    *,
+    max_comments: int = 120,
+    persona_memo: dict[str, Any] | None = None,
+    log: LogSink = NullLogSink,
+) -> AutoProfileRequest:
+    memo = compact_persona_memo(persona_memo)
+    comments = () if memo else context.comments[: max(1, max_comments)]
     payload = {
         "task": "infer_listener_visual_voice_profile",
         "constraints": {
@@ -198,6 +205,7 @@ def build_auto_profile_ai_request(context: AutoProfileContext, *, max_comments: 
             "identity_label": context.identity.label,
             "display_name": context.display_name,
             "row": context.target_row,
+            "persona_memo": memo,
         },
         "icon": {
             "local_path": context.icon_path,
@@ -227,10 +235,11 @@ def build_auto_profile_ai_request(context: AutoProfileContext, *, max_comments: 
         "個人の実在身元やセンシティブ属性は推測しないでください。\n"
         "返すJSON内の説明文字列は日本語で書いてください。skin.prompt も日本語で書いてください。\n"
         "icon.local_path がある場合は、その本人アイコン画像を色・雰囲気の参考にしてください。\n"
+        "target.persona_memo が空でない場合は、過去コメントの代わりにその人物メモを優先してください。\n"
         "スキンは512x32のOBSコメント用で、中央の文字レーンを読みやすく残してください。\n\n"
         + json.dumps(payload, ensure_ascii=False, indent=2, default=str)
     )
-    log_result(log, "AI入力作成", comments=len(comments), fonts=len(context.fonts), voices=len(context.voices))
+    log_result(log, "AI入力作成", comments=len(comments), persona_memo="yes" if memo else "no", fonts=len(context.fonts), voices=len(context.voices))
     return AutoProfileRequest(payload=payload, prompt=prompt)
 
 
@@ -402,6 +411,19 @@ def display_name_from_row(row: dict[str, Any]) -> str:
         if value:
             return value
     return ""
+
+
+def compact_persona_memo(payload: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    tags = payload.get("tags") if isinstance(payload.get("tags"), list) else []
+    memo = {
+        "display_name": safe_display_name(payload.get("display_name")),
+        "persona_summary": str(payload.get("persona_summary") or "").strip(),
+        "speech_style": str(payload.get("speech_style") or "").strip(),
+        "tags": [str(item).strip() for item in tags if str(item).strip()][:6],
+    }
+    return {key: value for key, value in memo.items() if value}
 
 
 def row_value(row: Any, key: str) -> Any:

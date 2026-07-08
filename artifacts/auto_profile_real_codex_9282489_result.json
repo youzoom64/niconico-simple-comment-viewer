@@ -1,0 +1,87 @@
+{
+  "identity": "アカウントID: 9282489",
+  "comments": 80,
+  "icon_path": "J:\\utility\\Niconico\\niconico-simple-comment-viewer\\data\\icon_cache\\9282489.jpg",
+  "icon_summary": {
+    "path": "J:\\utility\\Niconico\\niconico-simple-comment-viewer\\data\\icon_cache\\9282489.jpg",
+    "width": 150,
+    "height": 150,
+    "average_color": "#a49377",
+    "dominant_colors": [
+      "#eaede1",
+      "#a4916b",
+      "#d0ceb3",
+      "#d0b294",
+      "#64502f"
+    ]
+  },
+  "prompt_chars": 10355,
+  "plan": {
+    "display_name": "通りすがり",
+    "persona_summary": "冷静に距離を取りながら、議論や判断では客観性を重視する通りすがりの助言役。やや辛口だが、相手を心配して止める世話焼き感がある。",
+    "skin_concept": "セピア寄りの落ち着いた論客スキン。左右に控えめな紙片・余白線・小さなアクセントを置き、中央の文字レーンは明るい生成りで読みやすく残す。",
+    "skin_prompt": "512x32 OBS comment skin, calm passerby debater mood, muted sepia and warm beige palette inspired by icon colors, thin dark brown border, subtle paper texture only at far left and far right, tiny analytical accent marks like small brackets or dots near edges, center 360px kept clean and bright for readable text, no character face, no identity clues, no busy pattern, no text in image",
+    "palette": [
+      "#eaede1",
+      "#d0ceb3",
+      "#a49377",
+      "#64502f",
+      "#2f281d"
+    ],
+    "font_id": 13,
+    "voice_id": 11,
+    "reason": "過去発言は、のめり込みや攻撃性を心配しつつ、多面的・客観的に見ることを促す内容が中心。本人の実在身元やセンシティブ属性は推測せず、発言上の雰囲気とアイコン要約の落ち着いたベージュ系配色だけを演出に反映した。"
+  },
+  "png": "J:\\utility\\Niconico\\niconico-simple-comment-viewer\\artifacts\\auto_profile_real_codex_9282489.png",
+  "command": "＠通りすがり{S56,F13,V11}",
+  "logs": [
+    {
+      "level": "INFO",
+      "message": "[実行] / 本人アイコン取得 / user_id=9282489"
+    },
+    {
+      "level": "INFO",
+      "message": "[結果] / 本人アイコン取得 / path=J:\\utility\\Niconico\\niconico-simple-comment-viewer\\data\\icon_cache\\9282489.jpg / summary=True"
+    },
+    {
+      "level": "INFO",
+      "message": "[実行] / 過去コメント収集 / identity=アカウントID: 9282489 / lv=lv350904957 / limit=80"
+    },
+    {
+      "level": "INFO",
+      "message": "[結果] / 過去コメント収集 / count=80 / identity=アカウントID: 9282489"
+    },
+    {
+      "level": "INFO",
+      "message": "[結果] / 自動演出コンテキスト作成 / comments=80 / display_name=通りすがり"
+    },
+    {
+      "level": "INFO",
+      "message": "[結果] / AI入力作成 / comments=40 / fonts=20 / voices=5"
+    },
+    {
+      "level": "INFO",
+      "message": "[実行] / AI自動演出判定 / timeout=300 / model=default"
+    },
+    {
+      "level": "INFO",
+      "message": "[結果] / AI JSON解析 / font=13 / voice=11"
+    },
+    {
+      "level": "INFO",
+      "message": "[結果] / AI自動演出判定 / font=13 / voice=11 / display_name=通りすがり"
+    },
+    {
+      "level": "INFO",
+      "message": "[実行] / スキンPNG生成 / path=artifacts\\auto_profile_real_codex_9282489.png / width=512 / height=32"
+    },
+    {
+      "level": "INFO",
+      "message": "[結果] / スキンPNG生成 / path=artifacts\\auto_profile_real_codex_9282489.png / bytes=546"
+    },
+    {
+      "level": "INFO",
+      "message": "[結果] / コメント設定コマンド生成 / command=＠通りすがり{S56,F13,V11}"
+    }
+  ]
+}

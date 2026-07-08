@@ -11,8 +11,9 @@ from PyQt6.QtWidgets import QApplication, QMenu, QTableWidget
 @dataclass(frozen=True)
 class TableContextAction:
     label: str
-    callback: Callable[[dict[str, Any], int, int], None]
+    callback: Callable[[dict[str, Any], int, int], None] | None = None
     enabled: Callable[[dict[str, Any], int, int], bool] | None = None
+    children: tuple["TableContextAction", ...] = ()
 
 
 def install_table_copy_menu(
@@ -41,10 +42,7 @@ def _open_menu(
     menu = QMenu(table)
     action_map = {}
     for extra in extra_actions:
-        menu_action = menu.addAction(extra.label)
-        if extra.enabled and not extra.enabled(row_data, row, column):
-            menu_action.setEnabled(False)
-        action_map[menu_action] = extra
+        _add_extra_action(menu, extra, row_data, row, column, action_map)
     if extra_actions:
         menu.addSeparator()
     copy_cell = menu.addAction("セルをコピー")
@@ -52,7 +50,9 @@ def _open_menu(
     copy_json = menu.addAction("行をJSONコピー")
     action = menu.exec(table.viewport().mapToGlobal(point))
     if action in action_map:
-        action_map[action].callback(row_data, row, column)
+        extra = action_map[action]
+        if extra.callback:
+            extra.callback(row_data, row, column)
         return
     clipboard = QApplication.clipboard()
     if action == copy_cell:
@@ -61,3 +61,25 @@ def _open_menu(
         clipboard.setText(row_text)
     elif action == copy_json:
         clipboard.setText(json.dumps(row_data, ensure_ascii=False, indent=2, default=str))
+
+
+def _add_extra_action(
+    menu: QMenu,
+    extra: TableContextAction,
+    row_data: dict[str, Any],
+    row: int,
+    column: int,
+    action_map: dict[Any, TableContextAction],
+) -> None:
+    if extra.children:
+        submenu = menu.addMenu(extra.label)
+        if extra.enabled and not extra.enabled(row_data, row, column):
+            submenu.setEnabled(False)
+        for child in extra.children:
+            _add_extra_action(submenu, child, row_data, row, column, action_map)
+        return
+    menu_action = menu.addAction(extra.label)
+    if extra.enabled and not extra.enabled(row_data, row, column):
+        menu_action.setEnabled(False)
+    if extra.callback:
+        action_map[menu_action] = extra

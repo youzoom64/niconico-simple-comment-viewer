@@ -8,6 +8,11 @@ from typing import Any, Callable
 from app.core.logging import log_result
 from app.core.paths import APP_PATHS
 from app.db.connection import database_session
+from app.db.repositories.broadcast_history import (
+    BroadcastHistoryMetadata,
+    count_broadcast_events,
+    upsert_broadcast_history,
+)
 from app.db.repositories.events import save_event_rows
 from app.db.schema import initialize_database
 from app.events.models import json_default
@@ -30,7 +35,14 @@ CSV_FIELDS = [
 ]
 
 
-def save_rows(lv: str, rows: list[dict[str, Any]], log: Callable[[str, str], None]) -> FetchResult:
+def save_rows(
+    lv: str,
+    rows: list[dict[str, Any]],
+    log: Callable[[str, str], None],
+    *,
+    history_mode: str = "seen",
+    metadata: BroadcastHistoryMetadata | None = None,
+) -> FetchResult:
     APP_PATHS.output.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     base = APP_PATHS.output / f"{lv}_{stamp}"
@@ -50,5 +62,15 @@ def save_rows(lv: str, rows: list[dict[str, Any]], log: Callable[[str, str], Non
     with database_session() as conn:
         initialize_database(conn)
         db_saved_count = save_event_rows(conn, lv, rows)
+        history_metadata = metadata or BroadcastHistoryMetadata(lv=lv)
+        upsert_broadcast_history(
+            conn,
+            history_metadata,
+            mode=history_mode,
+            event_count=count_broadcast_events(conn, lv),
+            jsonl_path=jsonl_path,
+            json_path=json_path,
+            csv_path=csv_path,
+        )
     log_result(log, "保存", jsonl=jsonl_path, json=json_path, csv=csv_path, rows=len(rows), db=db_saved_count)
     return FetchResult(lv, rows, jsonl_path, json_path, csv_path, db_saved_count)

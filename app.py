@@ -12,10 +12,9 @@ from typing import Any
 from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
-    QHBoxLayout,
     QMainWindow,
     QMessageBox,
-    QPushButton,
+    QTabBar,
     QTabWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -33,6 +32,7 @@ from app.core.logging import (
     should_show_log,
 )
 from app.db.connection import database_session
+from app.db.repositories.events import list_events_by_lv
 from app.db.repositories.profiles import get_live_user_profile, upsert_live_user_profile
 from app.db.schema import initialize_database
 from app.domain.output.render_packet import RenderPacket
@@ -43,12 +43,14 @@ from app.gui.common.scroll_guard import capture_scroll, restore_scroll
 from app.gui.common.table_state import connect_persistent_table_state, export_table_state, restore_table_state
 from app.gui.common.window_state import export_window_state, restore_window_state
 from app.gui.auto_profile_worker import AutoProfileWorker
-from app.gui.comment_page import CommentPage
+from app.gui.comment_page import COMMENT_TABLE_COLUMNS, COMMENT_TABLE_STATE_KEY, CommentPage
+from app.gui.persona_summary_worker import PersonaSummaryWorker
 from app.gui.dialogs.account_profile import AccountProfileDialog
 from app.gui.dialogs.auto_profile_result import AutoProfileResultDialog
 from app.gui.dialogs.listener_history import ListenerHistoryDialog
 from app.gui.error_text import summarize_error_for_dialog, wrap_error_details
 from app.gui.tabs.basic_settings import BasicSettingsTab
+from app.gui.tabs.broadcast_history import BroadcastHistoryTab
 from app.gui.tabs.event_presets import EventPresetsTab
 from app.gui.tabs.live_users import LiveUsersTab
 from app.gui.tabs.obs_control import ObsControlTab
@@ -225,25 +227,29 @@ class MainWindow(QMainWindow):
         self.listener_history_dialogs: list[ListenerHistoryDialog] = []
         self.auto_profile_thread: QThread | None = None
         self.auto_profile_worker: AutoProfileWorker | None = None
+        self.persona_summary_thread: QThread | None = None
+        self.persona_summary_worker: PersonaSummaryWorker | None = None
         self.auto_profile_result_dialogs: list[AutoProfileResultDialog] = []
 
         self.comment_tab_widget = QTabWidget()
         self.comment_tab_widget.setTabsClosable(True)
         self.comment_tab_widget.tabCloseRequested.connect(self.close_comment_page)
-        self.add_comment_tab_button = QPushButton("放送タブ追加")
-        self.add_comment_tab_button.clicked.connect(lambda: self.add_comment_page())
-        comment_bar = QHBoxLayout()
-        comment_bar.addWidget(self.add_comment_tab_button)
-        comment_bar.addStretch(1)
+        self.comment_add_tab = QWidget()
+        self.comment_tab_widget.tabBarClicked.connect(self.handle_comment_tab_clicked)
         comment_root_layout = QVBoxLayout()
-        comment_root_layout.addLayout(comment_bar)
         comment_root_layout.addWidget(self.comment_tab_widget, 1)
         comment_root = QWidget()
         comment_root.setLayout(comment_root_layout)
+        self.comment_root = comment_root
         self.add_comment_page("放送1")
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(comment_root, "コメント")
+        self.tabs.addTab(self.comment_root, "コメント")
+        self.broadcast_history_tab = BroadcastHistoryTab()
+        self.broadcast_history_tab.load_requested.connect(self.load_history_lv_to_current_page)
+        self.broadcast_history_tab.connect_requested.connect(self.connect_history_lv)
+        self.broadcast_history_tab.fetch_requested.connect(self.fetch_history_lv)
+        self.tabs.addTab(self.broadcast_history_tab, "取得履歴")
         self.basic_settings_tab = BasicSettingsTab(self.settings_store, self.app_config)
         self.basic_settings_tab.config_saved.connect(self.apply_basic_config)
         self.tabs.addTab(self.basic_settings_tab, "基本設定")
@@ -292,6 +298,37 @@ class MainWindow(QMainWindow):
                     self.row_has_listener_identity,
                 ),
                 TableContextAction(
+                    "人物要約",
+                    enabled=self.row_has_listener_identity,
+                    children=(
+                        TableContextAction(
+                            "最新20件で要約",
+                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, 20),
+                            self.row_has_listener_identity,
+                        ),
+                        TableContextAction(
+                            "最新50件で要約",
+                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, 50),
+                            self.row_has_listener_identity,
+                        ),
+                        TableContextAction(
+                            "最新100件で要約",
+                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, 100),
+                            self.row_has_listener_identity,
+                        ),
+                        TableContextAction(
+                            "最新200件で要約",
+                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, 200),
+                            self.row_has_listener_identity,
+                        ),
+                        TableContextAction(
+                            "全件で要約",
+                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, None),
+                            self.row_has_listener_identity,
+                        ),
+                    ),
+                ),
+                TableContextAction(
                     "自動演出の分析結果を開く",
                     lambda row, row_index, column_index, p=page: self.open_auto_profile_result_from_row(p, row, row_index, column_index),
                     self.row_has_auto_profile_result,
@@ -314,13 +351,39 @@ class MainWindow(QMainWindow):
             ],
         )
         self.comment_pages.append(page)
-        index = self.comment_tab_widget.addTab(page, page.title)
+        add_index = self.comment_add_tab_index()
+        if add_index >= 0:
+            index = self.comment_tab_widget.insertTab(add_index, page, page.title)
+        else:
+            index = self.comment_tab_widget.addTab(page, page.title)
         self.comment_tab_widget.setCurrentIndex(index)
+        self.ensure_comment_add_tab()
         if len(self.comment_pages) == 1:
-            connect_persistent_table_state(page.table, self.ui_state_store, "comments")
+            connect_persistent_table_state(page.table, self.ui_state_store, COMMENT_TABLE_STATE_KEY)
         return page
 
+    def comment_add_tab_index(self) -> int:
+        return self.comment_tab_widget.indexOf(self.comment_add_tab)
+
+    def ensure_comment_add_tab(self) -> None:
+        index = self.comment_add_tab_index()
+        if index < 0:
+            index = self.comment_tab_widget.addTab(self.comment_add_tab, "+")
+        elif index != self.comment_tab_widget.count() - 1:
+            self.comment_tab_widget.removeTab(index)
+            index = self.comment_tab_widget.addTab(self.comment_add_tab, "+")
+        tab_bar = self.comment_tab_widget.tabBar()
+        tab_bar.setTabToolTip(index, "放送タブ追加")
+        tab_bar.setTabButton(index, QTabBar.ButtonPosition.LeftSide, None)
+        tab_bar.setTabButton(index, QTabBar.ButtonPosition.RightSide, None)
+
+    def handle_comment_tab_clicked(self, index: int) -> None:
+        if self.comment_tab_widget.widget(index) is self.comment_add_tab:
+            self.add_comment_page()
+
     def close_comment_page(self, index: int) -> None:
+        if self.comment_tab_widget.widget(index) is self.comment_add_tab:
+            return
         if len(self.comment_pages) <= 1:
             return
         page = self.comment_tab_widget.widget(index)
@@ -355,6 +418,46 @@ class MainWindow(QMainWindow):
         if isinstance(page, CommentPage):
             return page
         return self.comment_pages[0]
+
+    def load_history_lv_to_current_page(self, lv: str) -> CommentPage | None:
+        page = self.current_comment_page()
+        if page.thread is not None:
+            QMessageBox.information(self, "放送処理中", "現在の放送タブが処理中なので履歴から入力できない")
+            return None
+        page.lv_input.setText(lv)
+        page.current_lv = lv
+        saved_rows = self.load_saved_comment_rows(lv)
+        page.rows = saved_rows
+        self.rebuild_anonymous_184_first_comments(page, saved_rows)
+        self.populate_table(page, saved_rows)
+        if saved_rows:
+            counts = Counter(str(row.get("kind") or "unknown") for row in saved_rows)
+            page.status_label.setText(f"{lv} 保存済み表示: {len(saved_rows)}件 / {dict(counts)}")
+        else:
+            page.status_label.setText(f"{lv} 保存済みコメントなし")
+        self.tabs.setCurrentWidget(self.comment_root)
+        self.comment_tab_widget.setCurrentWidget(page)
+        self.append_log("INFO", f"履歴から放送IDを入力: {lv} 保存済み={len(saved_rows)}件", page)
+        return page
+
+    def load_saved_comment_rows(self, lv: str) -> list[dict[str, Any]]:
+        try:
+            with database_session() as conn:
+                initialize_database(conn)
+                return list_events_by_lv(conn, lv)
+        except Exception as exc:
+            self.append_log("ERROR", f"保存済みコメント読込失敗: {lv} {type(exc).__name__}: {exc}")
+            return []
+
+    def connect_history_lv(self, lv: str) -> None:
+        page = self.load_history_lv_to_current_page(lv)
+        if page is not None:
+            self.start_stream(page)
+
+    def fetch_history_lv(self, lv: str) -> None:
+        page = self.load_history_lv_to_current_page(lv)
+        if page is not None:
+            self.start_fetch(page)
 
     def create_voicevox_pipeline(self) -> VoicevoxFifoPipeline:
         output = OutputCoordinator(self.voicevox_obs_sink, self.voicevox_audio_sink)
@@ -479,6 +582,8 @@ class MainWindow(QMainWindow):
         self.populate_table(page, result.rows)
         counts = Counter(str(row.get("kind") or "unknown") for row in result.rows)
         page.status_label.setText(f"{result.lv} 取得完了: {len(result.rows)}件 / {dict(counts)}")
+        if hasattr(self, "broadcast_history_tab"):
+            self.broadcast_history_tab.refresh()
 
     def fetch_failed(self, page: CommentPage, message: str) -> None:
         self.append_log("ERROR", message, page)
@@ -699,6 +804,48 @@ class MainWindow(QMainWindow):
         self.auto_profile_worker.failed.connect(lambda _message: self.cleanup_auto_profile_worker())
         self.auto_profile_thread.start()
 
+    def start_persona_summary_from_row(self, page: CommentPage, row: dict[str, Any], comment_limit: int | None) -> None:
+        if self.persona_summary_thread is not None:
+            QMessageBox.information(self, "人物要約中", "人物要約を作成中です")
+            return
+        identity = resolve_listener_identity(row)
+        if identity.is_empty():
+            QMessageBox.information(self, "リスナーIDなし", "この行には要約対象のリスナーIDがない")
+            return
+        limit_label = "全件" if comment_limit is None else f"最新{comment_limit}件"
+        page.status_label.setText(f"人物要約作成中: {identity.label} / {limit_label}")
+        self.append_log("INFO", f"人物要約作成開始: {identity.label} limit={limit_label}", page)
+        self.persona_summary_thread = QThread()
+        self.persona_summary_worker = PersonaSummaryWorker(row, page.current_lv, comment_limit, self.app_config)
+        self.persona_summary_worker.moveToThread(self.persona_summary_thread)
+        self.persona_summary_thread.started.connect(self.persona_summary_worker.run)
+        self.persona_summary_worker.log.connect(lambda level, message, p=page: self.handle_log(level, message, p))
+        self.persona_summary_worker.finished.connect(lambda result, p=page: self.persona_summary_finished(p, result))
+        self.persona_summary_worker.failed.connect(lambda message, p=page: self.persona_summary_failed(p, message))
+        self.persona_summary_worker.finished.connect(lambda _result: self.cleanup_persona_summary_worker())
+        self.persona_summary_worker.failed.connect(lambda _message: self.cleanup_persona_summary_worker())
+        self.persona_summary_thread.start()
+
+    def persona_summary_finished(self, page: CommentPage, result: Any) -> None:
+        page.status_label.setText(f"人物要約完了: {result.identity_label}")
+        self.append_log(
+            "INFO",
+            f"人物要約完了: {result.identity_label} comments={result.comment_count} memo={result.memo_path}",
+            page,
+        )
+
+    def persona_summary_failed(self, page: CommentPage, message: str) -> None:
+        summary = summarize_error_for_dialog(message)
+        page.status_label.setText(f"人物要約失敗: {summary}")
+        self.append_log("ERROR", f"人物要約失敗: {message}", page)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("人物要約失敗")
+        box.setText("人物要約の作成に失敗しました。")
+        box.setInformativeText(summary)
+        box.setDetailedText(wrap_error_details(message))
+        box.exec()
+
     def auto_profile_finished(self, page: CommentPage, result: Any) -> None:
         self.live_users_tab.reload()
         self.reload_profile_display_names()
@@ -727,6 +874,13 @@ class MainWindow(QMainWindow):
             self.auto_profile_thread.wait(3000)
         self.auto_profile_thread = None
         self.auto_profile_worker = None
+
+    def cleanup_persona_summary_worker(self) -> None:
+        if self.persona_summary_thread:
+            self.persona_summary_thread.quit()
+            self.persona_summary_thread.wait(3000)
+        self.persona_summary_thread = None
+        self.persona_summary_worker = None
 
     def row_has_auto_profile_result(self, row: dict[str, Any], _row_index: int, _column_index: int) -> bool:
         identity = resolve_listener_identity(row)
@@ -840,22 +994,7 @@ class MainWindow(QMainWindow):
         page.comments_auto_scroll = vertical_bar.value() >= vertical_bar.maximum()
 
     def set_table_row(self, page: CommentPage, row_index: int, row: dict[str, Any]) -> None:
-        columns = [
-            "__icon__",
-            "__display_name__",
-            "kind",
-            "no",
-            "at",
-            "vpos",
-            "user_id",
-            "raw_user_id",
-            "hashed_user_id",
-            "account_status",
-            "commands",
-            "content",
-            "source",
-            "page_index",
-        ]
+        columns = [key for key, _label, _width in COMMENT_TABLE_COLUMNS]
         for column_index, key in enumerate(columns):
             if key == "__icon__":
                 item = QTableWidgetItem("")
@@ -1103,7 +1242,7 @@ class MainWindow(QMainWindow):
         state = self.ui_state_store.load()
         restore_window_state(self, state.get("window") if isinstance(state.get("window"), dict) else {})
         tables = state.get("tables") if isinstance(state.get("tables"), dict) else {}
-        comments_state = tables.get("comments") if isinstance(tables.get("comments"), dict) else {}
+        comments_state = tables.get(COMMENT_TABLE_STATE_KEY) if isinstance(tables.get(COMMENT_TABLE_STATE_KEY), dict) else {}
         if self.comment_pages:
             restore_table_state(self.comment_pages[0].table, comments_state)
 
@@ -1111,7 +1250,7 @@ class MainWindow(QMainWindow):
         state = self.ui_state_store.load()
         tables = state.get("tables") if isinstance(state.get("tables"), dict) else {}
         if self.comment_pages:
-            tables["comments"] = export_table_state(self.comment_pages[0].table)
+            tables[COMMENT_TABLE_STATE_KEY] = export_table_state(self.comment_pages[0].table)
         self.ui_state_store.save(
             {
                 **state,
@@ -1125,6 +1264,9 @@ class MainWindow(QMainWindow):
         if self.auto_profile_thread:
             self.auto_profile_thread.quit()
             self.auto_profile_thread.wait(3000)
+        if self.persona_summary_thread:
+            self.persona_summary_thread.quit()
+            self.persona_summary_thread.wait(3000)
         for page in list(self.comment_pages):
             self.stop_comment_page(page)
         for thread in list(self.tag_change_threads):

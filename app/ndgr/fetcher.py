@@ -5,8 +5,10 @@ from collections import Counter
 from typing import Any, Callable
 
 from app.core.logging import log_branch, log_execution, log_result
+from app.db.repositories.broadcast_history import BroadcastHistoryMetadata
 from app.events.normalizer import chunked_message_to_row
 from app.ndgr.output import save_rows
+from app.ndgr.program_info import enrich_history_metadata, program_info_to_history_metadata
 from app.ndgr.results import FetchResult
 
 
@@ -26,8 +28,10 @@ class AllCommentFetcher:
 
         client = NDGRClient(self.lv, verbose=False, console_output=False)
         rows: list[dict[str, Any]] = []
+        metadata = BroadcastHistoryMetadata(lv=self.lv)
         try:
             info = await client.fetchNicoLiveProgramInfo()
+            metadata = enrich_history_metadata(self.lv, program_info_to_history_metadata(self.lv, info))
             title = getattr(info, "title", "")
             status = getattr(info, "status", "")
             log_execution(self.log, "番組情報取得", level="INFO", lv=self.lv, status=status, title=title)
@@ -37,7 +41,7 @@ class AllCommentFetcher:
             backward_uri = await self._find_backward_uri(client, view_uri)
             if not backward_uri:
                 log_branch(self.log, "Backward URIなし", level="WARN", lv=self.lv)
-                return self._save(rows)
+                return self._save(rows, metadata)
 
             page_index = 0
             while backward_uri and not self.cancel_requested:
@@ -61,7 +65,7 @@ class AllCommentFetcher:
                 log_branch(self.log, "キャンセル要求で取得停止", level="WARN", lv=self.lv)
             counts = Counter(str(row.get("kind") or "unknown") for row in rows)
             log_result(self.log, "取得完了", total=len(rows), kinds=dict(counts))
-            return self._save(rows)
+            return self._save(rows, metadata)
         finally:
             httpx_client = getattr(client, "httpx_client", None)
             close = getattr(httpx_client, "aclose", None)
@@ -99,5 +103,5 @@ class AllCommentFetcher:
                 self.log("TRACE", f"{row.get('kind')} no={row.get('no')} user={row.get('user_id')} text={row.get('content')}")
         return rows
 
-    def _save(self, rows: list[dict[str, Any]]) -> FetchResult:
-        return save_rows(self.lv, rows, self.log)
+    def _save(self, rows: list[dict[str, Any]], metadata: BroadcastHistoryMetadata) -> FetchResult:
+        return save_rows(self.lv, rows, self.log, history_mode="fetch", metadata=metadata)

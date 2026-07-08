@@ -10,6 +10,7 @@ from app.core.logging import LogSink, log_branch, log_error, log_result
 from app.core.paths import APP_PATHS
 from app.db.connection import database_session
 from app.db.schema import initialize_database
+from app.services.auto_profile.persona_summary import load_persona_memo
 from app.services.auto_profile.results import save_auto_profile_result
 from app.services.auto_profile.workflow import (
     FontOption,
@@ -63,7 +64,10 @@ def execute_auto_profile_for_row(
         voices=voices,
         log=log,
     )
-    request = build_auto_profile_ai_request(context, log=log)
+    persona_memo = load_persona_memo(context.identity)
+    if persona_memo:
+        log_result(log, "人物要約メモ使用", identity=context.identity.label)
+    request = build_auto_profile_ai_request(context, persona_memo=persona_memo, log=log)
     ai_result = run_auto_profile_ai_with_response(
         request,
         model=config.ai_reply_model,
