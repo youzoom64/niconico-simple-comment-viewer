@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtWidgets import QFileDialog, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSlider, QSpinBox, QTabWidget, QTextEdit, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFileDialog, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QSlider, QSpinBox, QTabWidget, QTextEdit, QVBoxLayout, QWidget
 
 from app.core.config import AppConfig
 from app.gui.common.combo_box import NoWheelComboBox
@@ -28,6 +28,7 @@ class BasicSettingsTab(QWidget):
         self.voicevox_worker_count_input = QSpinBox()
         self.voicevox_worker_count_input.setRange(1, 16)
         self.voicevox_style_input = VoicevoxStyleCombo()
+        allow_combo_shrink(self.voicevox_style_input)
         self.reload_speakers_button = QPushButton("VOICEVOX話者を再読込")
         self.voice_volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.voice_volume_slider.setRange(0, 200)
@@ -42,6 +43,7 @@ class BasicSettingsTab(QWidget):
         self.skin_height_input = QSpinBox()
         self.skin_height_input.setRange(1, 512)
         self.font_family_input = FontFamilyCombo()
+        allow_combo_shrink(self.font_family_input)
         self.font_size_input = QSpinBox()
         self.font_size_input.setRange(6, 128)
         self.font_color_input = QLineEdit()
@@ -71,8 +73,11 @@ class BasicSettingsTab(QWidget):
         self.list_name_width_input.setPageStep(20)
         self.list_name_width_label = QLabel("")
         self.list_font_family_input = FontFamilyCombo()
+        allow_combo_shrink(self.list_font_family_input)
         self.list_name_font_size_input = QComboBox()
         self.list_text_font_size_input = QComboBox()
+        allow_combo_shrink(self.list_name_font_size_input)
+        allow_combo_shrink(self.list_text_font_size_input)
         for size in list_font_size_options():
             self.list_name_font_size_input.addItem(str(size), size)
             self.list_text_font_size_input.addItem(str(size), size)
@@ -105,12 +110,14 @@ class BasicSettingsTab(QWidget):
         self.tag_change_rules_input.setFixedHeight(120)
         self.tag_change_headless_input = QCheckBox("Seleniumを非表示で実行")
         self.tag_change_chrome_profile_input = QComboBox()
+        allow_combo_shrink(self.tag_change_chrome_profile_input)
         self.tag_change_reload_profiles_button = QPushButton("再読込")
         self.tag_change_timeout_input = QDoubleSpinBox()
         self.tag_change_timeout_input.setRange(10.0, 180.0)
         self.tag_change_timeout_input.setSingleStep(5.0)
         self.youtube_accept_enabled_input = QCheckBox("YouTube動画受付モード")
         self.youtube_chrome_profile_input = NoWheelComboBox()
+        allow_combo_shrink(self.youtube_chrome_profile_input)
         self.youtube_reload_profiles_button = QPushButton("再読込")
         self.save_button = QPushButton("保存")
         self.status_label = QLabel("")
@@ -539,6 +546,12 @@ def combo_int(combo: QComboBox, default: int) -> int:
         return int(combo.currentData())
     except (TypeError, ValueError):
         return default
+
+
+def allow_combo_shrink(combo: QComboBox) -> None:
+    combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+    combo.setMinimumContentsLength(0)
+    combo.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
 
 
 def opacity_to_slider(value: float) -> int:

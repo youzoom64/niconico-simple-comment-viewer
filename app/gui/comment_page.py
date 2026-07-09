@@ -64,6 +64,12 @@ class ElidedLabel(QLabel):
         QLabel.setText(self, text)
 
 
+def allow_horizontal_shrink(widget: QWidget) -> None:
+    policy = widget.sizePolicy()
+    policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
+    widget.setSizePolicy(policy)
+
+
 class CommentPage(QWidget):
     def __init__(self, title: str = "放送1") -> None:
         super().__init__()
@@ -146,6 +152,22 @@ class CommentPage(QWidget):
         self.comment_send_button = QPushButton("送信")
         self.comment_send_button.setEnabled(False)
         self.youtube_reset_button = QPushButton("YouTube受付リセット")
+
+        for control in (
+            self.lv_input,
+            self.connect_button,
+            self.cancel_button,
+            self.fetch_button,
+            self.level_combo,
+            self.trace_checkbox,
+            self.read_aloud_checkbox,
+            self.obs_output_checkbox,
+            self.comment_input,
+            self.comment_anonymous_checkbox,
+            self.comment_send_button,
+            self.youtube_reset_button,
+        ):
+            allow_horizontal_shrink(control)
 
         comment_row = QHBoxLayout()
         comment_row.addWidget(QLabel("コメント"))
