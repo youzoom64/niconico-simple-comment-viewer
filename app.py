@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import datetime
 from typing import Any
 
-from PyQt6.QtCore import QObject, QThread, Qt, QSize, pyqtSignal
+from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -109,14 +109,6 @@ def format_event_counts(counts: Counter[str]) -> str:
         f"{EVENT_KIND_LABELS.get(str(kind), str(kind))}:{count}"
         for kind, count in counts.items()
     )
-
-
-class CommentTabBar(QTabBar):
-    def tabSizeHint(self, index: int) -> QSize:  # noqa: N802 - Qt override
-        size = super().tabSizeHint(index)
-        if self.tabText(index) == "+":
-            return QSize(44, max(32, size.height()))
-        return QSize(230, max(32, size.height()))
 
 
 class FetchWorker(QObject):
@@ -268,8 +260,9 @@ class MainWindow(QMainWindow):
         self.auto_profile_result_dialogs: list[AutoProfileResultDialog] = []
 
         self.comment_tab_widget = QTabWidget()
-        self.comment_tab_widget.setTabBar(CommentTabBar())
         self.comment_tab_widget.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
+        self.comment_tab_widget.tabBar().setExpanding(False)
+        self.comment_tab_widget.tabBar().setUsesScrollButtons(True)
         self.comment_tab_widget.setTabsClosable(True)
         self.comment_tab_widget.tabCloseRequested.connect(self.close_comment_page)
         self.comment_add_tab = QWidget()
@@ -419,7 +412,12 @@ class MainWindow(QMainWindow):
         if index < 0:
             return
         title = page.program_title.strip()
-        tab_text = f"{page.title} {title}" if title else page.title
+        raw_tab_text = f"{page.title} {title}" if title else page.title
+        tab_text = self.comment_tab_widget.fontMetrics().elidedText(
+            raw_tab_text,
+            Qt.TextElideMode.ElideRight,
+            240,
+        )
         tooltip = "\n".join(
             item
             for item in (

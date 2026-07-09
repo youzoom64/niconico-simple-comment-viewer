@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QSplitter,
     QTableWidget,
     QTextEdit,
@@ -45,6 +46,7 @@ class ElidedLabel(QLabel):
         super().__init__("")
         self._full_text = ""
         self.setWordWrap(False)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.setText(text)
 
     def setText(self, text: str) -> None:  # noqa: N802 - Qt override
@@ -97,9 +99,7 @@ class CommentPage(QWidget):
         self.level_combo.setCurrentText("INFO")
         self.status_label = QLabel("待機中")
         self.broadcaster_label = ElidedLabel("放送者: -")
-        self.broadcaster_label.setFixedWidth(190)
         self.program_title_label = ElidedLabel("タイトル: -")
-        self.program_title_label.setMinimumWidth(260)
 
         address_row = QHBoxLayout()
         address_row.addWidget(QLabel("放送"))
@@ -109,8 +109,8 @@ class CommentPage(QWidget):
         address_row.addWidget(self.fetch_button)
 
         log_row = QHBoxLayout()
-        log_row.addWidget(self.broadcaster_label)
-        log_row.addWidget(self.program_title_label, 1)
+        log_row.addWidget(self.broadcaster_label, 1)
+        log_row.addWidget(self.program_title_label, 2)
         log_row.addWidget(QLabel("ログ"))
         log_row.addWidget(self.level_combo)
         log_row.addWidget(self.trace_checkbox)
