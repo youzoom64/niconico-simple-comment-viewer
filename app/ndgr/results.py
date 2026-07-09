@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from app.db.repositories.broadcast_history import BroadcastHistoryMetadata
+
 
 @dataclass
 class FetchResult:
@@ -13,3 +15,4 @@ class FetchResult:
     json_path: Path
     csv_path: Path
     db_saved_count: int = 0
+    metadata: BroadcastHistoryMetadata | None = None

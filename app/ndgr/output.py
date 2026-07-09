@@ -73,4 +73,4 @@ def save_rows(
             csv_path=csv_path,
         )
     log_result(log, "保存", jsonl=jsonl_path, json=json_path, csv=csv_path, rows=len(rows), db=db_saved_count)
-    return FetchResult(lv, rows, jsonl_path, json_path, csv_path, db_saved_count)
+    return FetchResult(lv, rows, jsonl_path, json_path, csv_path, db_saved_count, history_metadata)

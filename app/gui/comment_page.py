@@ -40,12 +40,37 @@ COMMENT_TABLE_COLUMNS: list[tuple[str, str, int]] = [
 ]
 
 
+class ElidedLabel(QLabel):
+    def __init__(self, text: str = "") -> None:
+        super().__init__("")
+        self._full_text = ""
+        self.setWordWrap(False)
+        self.setText(text)
+
+    def setText(self, text: str) -> None:  # noqa: N802 - Qt override
+        self._full_text = str(text or "")
+        self.setToolTip(self._full_text)
+        self._refresh_text()
+
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._refresh_text()
+
+    def _refresh_text(self) -> None:
+        width = max(12, self.width() - 4)
+        text = self.fontMetrics().elidedText(self._full_text, Qt.TextElideMode.ElideRight, width)
+        QLabel.setText(self, text)
+
+
 class CommentPage(QWidget):
     def __init__(self, title: str = "放送1") -> None:
         super().__init__()
         self.title = title
         self.rows: list[dict[str, Any]] = []
         self.current_lv = ""
+        self.program_title = ""
+        self.broadcaster_name = ""
+        self.close_requested = False
         self.comments_auto_scroll = True
         self.thread = None
         self.worker = None
@@ -71,6 +96,10 @@ class CommentPage(QWidget):
         self.level_combo.addItems(["INFO", "DEBUG", "TRACE", "WARN", "ERROR"])
         self.level_combo.setCurrentText("INFO")
         self.status_label = QLabel("待機中")
+        self.broadcaster_label = ElidedLabel("放送者: -")
+        self.broadcaster_label.setFixedWidth(190)
+        self.program_title_label = ElidedLabel("タイトル: -")
+        self.program_title_label.setMinimumWidth(260)
 
         address_row = QHBoxLayout()
         address_row.addWidget(QLabel("放送"))
@@ -80,12 +109,13 @@ class CommentPage(QWidget):
         address_row.addWidget(self.fetch_button)
 
         log_row = QHBoxLayout()
-        log_row.addWidget(self.read_aloud_checkbox)
-        log_row.addWidget(self.obs_output_checkbox)
-        log_row.addStretch(1)
+        log_row.addWidget(self.broadcaster_label)
+        log_row.addWidget(self.program_title_label, 1)
         log_row.addWidget(QLabel("ログ"))
         log_row.addWidget(self.level_combo)
         log_row.addWidget(self.trace_checkbox)
+        log_row.addWidget(self.read_aloud_checkbox)
+        log_row.addWidget(self.obs_output_checkbox)
 
         self.table = QTableWidget(0, len(COMMENT_TABLE_COLUMNS))
         self.table.setHorizontalHeaderLabels([label for _key, label, _width in COMMENT_TABLE_COLUMNS])

@@ -13,25 +13,44 @@ from app.ndgr.results import FetchResult
 
 
 class AllCommentFetcher:
-    def __init__(self, lv: str, log: Callable[[str, str], None], trace_each_message: bool = False) -> None:
+    def __init__(
+        self,
+        lv: str,
+        log: Callable[[str, str], None],
+        trace_each_message: bool = False,
+        on_metadata: Callable[[BroadcastHistoryMetadata], None] | None = None,
+    ) -> None:
         self.lv = lv
         self.log = log
         self.trace_each_message = trace_each_message
+        self.on_metadata = on_metadata
         self.cancel_requested = False
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._task: asyncio.Task[FetchResult] | None = None
 
     def cancel(self) -> None:
         self.cancel_requested = True
+        if self._loop and self._loop.is_running():
+            self._loop.call_soon_threadsafe(self._cancel_task)
+
+    def _cancel_task(self) -> None:
+        if self._task and not self._task.done():
+            self._task.cancel()
 
     async def fetch(self) -> FetchResult:
         from ndgr_client import NDGRClient
         from ndgr_client.ndgr_client import chat
 
+        self._loop = asyncio.get_running_loop()
+        self._task = asyncio.current_task()
         client = NDGRClient(self.lv, verbose=False, console_output=False)
         rows: list[dict[str, Any]] = []
         metadata = BroadcastHistoryMetadata(lv=self.lv)
         try:
             info = await client.fetchNicoLiveProgramInfo()
             metadata = enrich_history_metadata(self.lv, program_info_to_history_metadata(self.lv, info))
+            if self.on_metadata:
+                self.on_metadata(metadata)
             title = getattr(info, "title", "")
             status = getattr(info, "status", "")
             log_execution(self.log, "番組情報取得", level="INFO", lv=self.lv, status=status, title=title)
@@ -66,11 +85,16 @@ class AllCommentFetcher:
             counts = Counter(str(row.get("kind") or "unknown") for row in rows)
             log_result(self.log, "取得完了", total=len(rows), kinds=dict(counts))
             return self._save(rows, metadata)
+        except asyncio.CancelledError:
+            log_branch(self.log, "キャンセル要求で取得停止", level="WARN", lv=self.lv)
+            return self._save(rows, metadata)
         finally:
             httpx_client = getattr(client, "httpx_client", None)
             close = getattr(httpx_client, "aclose", None)
             if close:
                 await close()
+            self._task = None
+            self._loop = None
 
     async def _find_backward_uri(self, client: Any, view_uri: str) -> str | None:
         ready_for_next = None

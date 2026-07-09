@@ -22,26 +22,47 @@ class LiveCommentStreamer:
         log: Callable[[str, str], None],
         on_row: Callable[[dict[str, Any]], None],
         trace_each_message: bool = False,
+        on_metadata: Callable[[BroadcastHistoryMetadata], None] | None = None,
     ) -> None:
         self.lv = lv
         self.log = log
         self.on_row = on_row
         self.trace_each_message = trace_each_message
+        self.on_metadata = on_metadata
         self.cancel_requested = False
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._task: asyncio.Task[FetchResult] | None = None
+        self._entries_task: asyncio.Task[None] | None = None
+        self._active_segments: dict[str, asyncio.Task[None]] = {}
 
     def cancel(self) -> None:
         self.cancel_requested = True
+        if self._loop and self._loop.is_running():
+            self._loop.call_soon_threadsafe(self._cancel_active_tasks)
+
+    def _cancel_active_tasks(self) -> None:
+        if self._entries_task is None and self._task and not self._task.done():
+            self._task.cancel()
+        if self._entries_task and not self._entries_task.done():
+            self._entries_task.cancel()
+        for task in list(self._active_segments.values()):
+            if not task.done():
+                task.cancel()
 
     async def stream(self) -> FetchResult:
         from ndgr_client import NDGRClient
         from ndgr_client.ndgr_client import chat
 
+        self._loop = asyncio.get_running_loop()
+        self._task = asyncio.current_task()
         client = NDGRClient(self.lv, verbose=False, console_output=False)
         rows: list[dict[str, Any]] = []
         metadata = BroadcastHistoryMetadata(lv=self.lv)
         try:
             info = await client.fetchNicoLiveProgramInfo()
             metadata = enrich_history_metadata(self.lv, program_info_to_history_metadata(self.lv, info))
+            if self.on_metadata:
+                self.on_metadata(metadata)
             title = getattr(info, "title", "")
             status = getattr(info, "status", "")
             if status == "ENDED":
@@ -55,19 +76,28 @@ class LiveCommentStreamer:
             row_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
             entries_done = asyncio.Event()
             active_segments: dict[str, asyncio.Task[None]] = {}
+            self._active_segments = active_segments
             entries_task = asyncio.create_task(
                 self._read_entries(client, chat, view_uri, row_queue, entries_done, active_segments)
             )
+            self._entries_task = entries_task
             await self._consume_rows(row_queue, entries_done, active_segments, rows)
             await self._stop_tasks(entries_task, active_segments)
             counts = Counter(str(row.get("kind") or "unknown") for row in rows)
             log_result(self.log, "接続終了", total=len(rows), kinds=dict(counts))
+            return save_rows(self.lv, rows, self.log, history_mode="stream", metadata=metadata)
+        except asyncio.CancelledError:
+            log_branch(self.log, "キャンセル要求で接続停止", level="WARN", lv=self.lv)
             return save_rows(self.lv, rows, self.log, history_mode="stream", metadata=metadata)
         finally:
             httpx_client = getattr(client, "httpx_client", None)
             close = getattr(httpx_client, "aclose", None)
             if close:
                 await close()
+            self._entries_task = None
+            self._active_segments = {}
+            self._task = None
+            self._loop = None
 
     async def _read_entries(self, client: Any, chat: Any, view_uri: str, row_queue: asyncio.Queue, entries_done: asyncio.Event, active_segments: dict[str, asyncio.Task]) -> None:
         ready_for_next = None

@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import datetime
 from typing import Any
 
-from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, QThread, Qt, QSize, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -32,6 +32,7 @@ from app.core.logging import (
     should_show_log,
 )
 from app.db.connection import database_session
+from app.db.repositories.broadcast_history import BroadcastHistoryMetadata
 from app.db.repositories.events import list_events_by_lv
 from app.db.repositories.profiles import get_live_user_profile, upsert_live_user_profile
 from app.db.schema import initialize_database
@@ -90,9 +91,38 @@ def extract_lv(value: str) -> str:
     raise ValueError("lvID または watch URL を入力してくれ")
 
 
+EVENT_KIND_LABELS = {
+    "chat": "コメント",
+    "simple_notification": "通知",
+    "simple_notification_v2": "通知v2",
+    "nicoad": "広告",
+    "gift": "ギフト",
+    "visitor": "来場",
+    "unknown": "不明",
+}
+
+
+def format_event_counts(counts: Counter[str]) -> str:
+    if not counts:
+        return ""
+    return " / ".join(
+        f"{EVENT_KIND_LABELS.get(str(kind), str(kind))}:{count}"
+        for kind, count in counts.items()
+    )
+
+
+class CommentTabBar(QTabBar):
+    def tabSizeHint(self, index: int) -> QSize:  # noqa: N802 - Qt override
+        size = super().tabSizeHint(index)
+        if self.tabText(index) == "+":
+            return QSize(44, max(32, size.height()))
+        return QSize(230, max(32, size.height()))
+
+
 class FetchWorker(QObject):
     log = pyqtSignal(str, str)
     row_received = pyqtSignal(object)
+    metadata_received = pyqtSignal(object)
     finished = pyqtSignal(object)
     failed = pyqtSignal(str)
 
@@ -113,10 +143,16 @@ class FetchWorker(QObject):
                     self.log.emit,
                     self.row_received.emit,
                     self.trace_each_message,
+                    self.metadata_received.emit,
                 )
                 result = asyncio.run(self.runner.stream())
             else:
-                self.runner = AllCommentFetcher(self.lv, self.log.emit, self.trace_each_message)
+                self.runner = AllCommentFetcher(
+                    self.lv,
+                    self.log.emit,
+                    self.trace_each_message,
+                    self.metadata_received.emit,
+                )
                 result = asyncio.run(self.runner.fetch())
             log_result(self.log.emit, "worker処理時間", elapsed=f"{time.monotonic() - started:.1f}秒")
             self.finished.emit(result)
@@ -232,6 +268,8 @@ class MainWindow(QMainWindow):
         self.auto_profile_result_dialogs: list[AutoProfileResultDialog] = []
 
         self.comment_tab_widget = QTabWidget()
+        self.comment_tab_widget.setTabBar(CommentTabBar())
+        self.comment_tab_widget.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
         self.comment_tab_widget.setTabsClosable(True)
         self.comment_tab_widget.tabCloseRequested.connect(self.close_comment_page)
         self.comment_add_tab = QWidget()
@@ -357,10 +395,68 @@ class MainWindow(QMainWindow):
         else:
             index = self.comment_tab_widget.addTab(page, page.title)
         self.comment_tab_widget.setCurrentIndex(index)
+        self.update_comment_tab_text(page)
         self.ensure_comment_add_tab()
         if len(self.comment_pages) == 1:
             connect_persistent_table_state(page.table, self.ui_state_store, COMMENT_TABLE_STATE_KEY)
         return page
+
+    def set_comment_page_metadata(
+        self,
+        page: CommentPage,
+        metadata: BroadcastHistoryMetadata | None = None,
+    ) -> None:
+        title = (metadata.title if metadata else "") or ""
+        broadcaster = (metadata.broadcaster_name if metadata else "") or ""
+        page.program_title = title.strip()
+        page.broadcaster_name = broadcaster.strip()
+        page.broadcaster_label.setText(f"放送者: {page.broadcaster_name or '-'}")
+        page.program_title_label.setText(f"タイトル: {page.program_title or '-'}")
+        self.update_comment_tab_text(page)
+
+    def update_comment_tab_text(self, page: CommentPage) -> None:
+        index = self.comment_tab_widget.indexOf(page)
+        if index < 0:
+            return
+        title = page.program_title.strip()
+        tab_text = f"{page.title} {title}" if title else page.title
+        tooltip = "\n".join(
+            item
+            for item in (
+                page.current_lv,
+                f"放送者: {page.broadcaster_name}" if page.broadcaster_name else "",
+                title,
+            )
+            if item
+        )
+        self.comment_tab_widget.setTabText(index, tab_text)
+        self.comment_tab_widget.tabBar().setTabToolTip(index, tooltip or tab_text)
+
+    def load_broadcast_metadata(self, lv: str) -> BroadcastHistoryMetadata:
+        try:
+            with database_session() as conn:
+                initialize_database(conn)
+                row = conn.execute(
+                    """
+                    SELECT title, broadcaster_id, broadcaster_name, program_status, started_at, ended_at
+                    FROM broadcast_history
+                    WHERE lv = ?
+                    """,
+                    (lv,),
+                ).fetchone()
+        except Exception:
+            row = None
+        if row is None:
+            return BroadcastHistoryMetadata(lv=lv)
+        return BroadcastHistoryMetadata(
+            lv=lv,
+            title=str(row["title"] or ""),
+            broadcaster_id=str(row["broadcaster_id"] or ""),
+            broadcaster_name=str(row["broadcaster_name"] or ""),
+            program_status=str(row["program_status"] or ""),
+            started_at=row["started_at"],
+            ended_at=row["ended_at"],
+        )
 
     def comment_add_tab_index(self) -> int:
         return self.comment_tab_widget.indexOf(self.comment_add_tab)
@@ -389,10 +485,23 @@ class MainWindow(QMainWindow):
         page = self.comment_tab_widget.widget(index)
         if not isinstance(page, CommentPage):
             return
+        if page.thread is not None:
+            page.close_requested = True
+            self.comment_tab_widget.setTabText(index, f"停止中 {page.title}")
+            self.comment_tab_widget.tabBar().setTabToolTip(index, "停止完了後に閉じます")
+            self.cancel_fetch(page)
+            return
         self.stop_comment_page(page)
-        self.comment_pages.remove(page)
-        self.comment_tab_widget.removeTab(index)
+        self.remove_comment_page(page)
+
+    def remove_comment_page(self, page: CommentPage) -> None:
+        index = self.comment_tab_widget.indexOf(page)
+        if page in self.comment_pages:
+            self.comment_pages.remove(page)
+        if index >= 0:
+            self.comment_tab_widget.removeTab(index)
         page.deleteLater()
+        self.ensure_comment_add_tab()
 
     def stop_comment_page(self, page: CommentPage) -> None:
         if page.worker:
@@ -426,13 +535,14 @@ class MainWindow(QMainWindow):
             return None
         page.lv_input.setText(lv)
         page.current_lv = lv
+        self.set_comment_page_metadata(page, self.load_broadcast_metadata(lv))
         saved_rows = self.load_saved_comment_rows(lv)
         page.rows = saved_rows
         self.rebuild_anonymous_184_first_comments(page, saved_rows)
         self.populate_table(page, saved_rows)
         if saved_rows:
             counts = Counter(str(row.get("kind") or "unknown") for row in saved_rows)
-            page.status_label.setText(f"{lv} 保存済み表示: {len(saved_rows)}件 / {dict(counts)}")
+            page.status_label.setText(f"{lv} 保存済み表示: {len(saved_rows)}件 / {format_event_counts(counts)}")
         else:
             page.status_label.setText(f"{lv} 保存済みコメントなし")
         self.tabs.setCurrentWidget(self.comment_root)
@@ -538,6 +648,7 @@ class MainWindow(QMainWindow):
         if not keep_existing_rows:
             page.rows = []
             page.current_lv = lv
+            self.set_comment_page_metadata(page, BroadcastHistoryMetadata(lv=lv))
             self.load_anonymous_184_first_comments(page, lv)
             page.table.setRowCount(0)
             page.raw_text.clear()
@@ -557,6 +668,7 @@ class MainWindow(QMainWindow):
         page.thread.started.connect(page.worker.run)
         page.worker.log.connect(lambda level, message, p=page: self.handle_log(level, message, p))
         page.worker.row_received.connect(lambda row, p=page: self.append_stream_row(p, row))
+        page.worker.metadata_received.connect(lambda metadata, p=page: self.set_comment_page_metadata(p, metadata))
         page.worker.finished.connect(lambda result, p=page: self.fetch_finished(p, result))
         page.worker.failed.connect(lambda message, p=page: self.fetch_failed(p, message))
         page.worker.finished.connect(lambda _result, p=page: self.cleanup_worker(p))
@@ -567,6 +679,10 @@ class MainWindow(QMainWindow):
         target = page or self.current_comment_page()
         if target.worker:
             target.worker.cancel()
+            target.cancel_button.setEnabled(False)
+            counts = Counter(str(row.get("kind") or "unknown") for row in target.rows)
+            suffix = f" / {format_event_counts(counts)}" if counts else ""
+            target.status_label.setText(f"停止中: {len(target.rows)}件{suffix}")
             self.append_log("WARN", "停止要求を送信", target)
 
     def handle_log(self, level: str, message: str, page: CommentPage | None = None) -> None:
@@ -577,11 +693,12 @@ class MainWindow(QMainWindow):
     def fetch_finished(self, page: CommentPage, result: FetchResult) -> None:
         page.current_lv = result.lv
         page.rows = result.rows
+        self.set_comment_page_metadata(page, result.metadata or self.load_broadcast_metadata(result.lv))
         self.rebuild_anonymous_184_first_comments(page, result.rows)
         self.save_anonymous_184_first_comments(page)
         self.populate_table(page, result.rows)
         counts = Counter(str(row.get("kind") or "unknown") for row in result.rows)
-        page.status_label.setText(f"{result.lv} 取得完了: {len(result.rows)}件 / {dict(counts)}")
+        page.status_label.setText(f"{result.lv} 取得完了: {len(result.rows)}件 / {format_event_counts(counts)}")
         if hasattr(self, "broadcast_history_tab"):
             self.broadcast_history_tab.refresh()
 
@@ -590,6 +707,7 @@ class MainWindow(QMainWindow):
         page.status_label.setText(f"失敗: {summarize_error_for_dialog(message)}")
 
     def cleanup_worker(self, page: CommentPage) -> None:
+        should_close = page.close_requested
         page.connect_button.setEnabled(True)
         page.fetch_button.setEnabled(True)
         page.cancel_button.setEnabled(False)
@@ -599,6 +717,11 @@ class MainWindow(QMainWindow):
         page.thread = None
         page.worker = None
         self.update_comment_send_enabled(page)
+        if should_close and len(self.comment_pages) > 1:
+            page.close_requested = False
+            self.remove_comment_page(page)
+        else:
+            page.close_requested = False
 
     def update_comment_send_enabled(self, page: CommentPage | None = None) -> None:
         target = page or self.current_comment_page()
@@ -672,7 +795,7 @@ class MainWindow(QMainWindow):
             self.enqueue_voicevox_for_row(page, voice_row)
         if row_index == 0 or (row_index + 1) % 100 == 0:
             counts = Counter(str(item.get("kind") or "unknown") for item in page.rows)
-            page.status_label.setText(f"接続中: {len(page.rows)}件 / {dict(counts)}")
+            page.status_label.setText(f"接続中: {len(page.rows)}件 / {format_event_counts(counts)}")
 
     def apply_comment_setting_command_from_row(self, page: CommentPage, row: dict[str, Any]) -> dict[str, Any] | None:
         with database_session() as conn:
