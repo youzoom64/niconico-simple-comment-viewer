@@ -9,7 +9,8 @@ from collections import Counter
 from datetime import datetime
 from typing import Any
 
-from PyQt6.QtCore import QObject, QThread, Qt, QSize, pyqtSignal
+from PyQt6.QtCore import QObject, QThread, Qt, QSize, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -41,7 +42,7 @@ from app.events.pipeline import build_event_processing_plan
 from app.events.models import json_default
 from app.gui.common.context_menu import TableContextAction, install_table_copy_menu
 from app.gui.common.scroll_guard import capture_scroll, restore_scroll
-from app.gui.common.table_state import connect_persistent_table_state, export_table_state, restore_table_state
+from app.gui.common.table_state import connect_persistent_table_state, export_table_state, restore_persistent_table_state, restore_table_state
 from app.gui.common.window_state import export_window_state, restore_window_state
 from app.gui.auto_profile_worker import AutoProfileWorker
 from app.gui.comment_page import COMMENT_TABLE_COLUMNS, COMMENT_TABLE_STATE_KEY, CommentPage
@@ -51,7 +52,7 @@ from app.gui.dialogs.auto_profile_result import AutoProfileResultDialog
 from app.gui.dialogs.listener_history import ListenerHistoryDialog
 from app.gui.error_text import summarize_error_for_dialog, wrap_error_details
 from app.gui.tabs.basic_settings import BasicSettingsTab
-from app.gui.tabs.broadcast_history import BroadcastHistoryTab
+from app.gui.tabs.broadcast_history import BROADCAST_HISTORY_TABLE_STATE_KEY, BroadcastHistoryTab
 from app.gui.tabs.event_presets import EventPresetsTab
 from app.gui.tabs.live_users import LiveUsersTab
 from app.gui.tabs.obs_control import ObsControlTab
@@ -387,6 +388,11 @@ class MainWindow(QMainWindow):
                     self.row_has_listener_identity,
                 ),
                 TableContextAction(
+                    "リスナーページを開く",
+                    lambda row, row_index, column_index, p=page: self.open_listener_page_from_row(p, row, row_index, column_index),
+                    self.row_has_listener_page,
+                ),
+                TableContextAction(
                     "自動演出プロフィールを作成",
                     lambda row, row_index, column_index, p=page: self.start_auto_profile_from_row(p, row, row_index, column_index),
                     self.row_has_listener_identity,
@@ -454,8 +460,8 @@ class MainWindow(QMainWindow):
         self.update_comment_tab_text(page)
         self.ensure_comment_add_tab()
         self.refresh_comment_tab_widths()
-        if len(self.comment_pages) == 1:
-            connect_persistent_table_state(page.table, self.ui_state_store, COMMENT_TABLE_STATE_KEY)
+        restore_persistent_table_state(page.table, self.ui_state_store, COMMENT_TABLE_STATE_KEY)
+        connect_persistent_table_state(page.table, self.ui_state_store, COMMENT_TABLE_STATE_KEY)
         return page
 
     def set_comment_page_metadata(
@@ -1216,6 +1222,9 @@ class MainWindow(QMainWindow):
     def row_has_listener_identity(self, row: dict[str, Any], _row_index: int, _column_index: int) -> bool:
         return not resolve_listener_identity(row).is_empty()
 
+    def row_has_listener_page(self, row: dict[str, Any], _row_index: int, _column_index: int) -> bool:
+        return bool(self.niconico_user_id_from_row(row))
+
     def open_listener_history_from_row(self, page: CommentPage, row: dict[str, Any], _row_index: int, _column_index: int) -> None:
         identity = resolve_listener_identity(row)
         if identity.is_empty():
@@ -1227,6 +1236,23 @@ class MainWindow(QMainWindow):
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
+
+    def open_listener_page_from_row(self, _page: CommentPage, row: dict[str, Any], _row_index: int, _column_index: int) -> None:
+        url = self.listener_page_url_from_row(row)
+        if url:
+            QDesktopServices.openUrl(QUrl(url))
+
+    def listener_page_url_from_row(self, row: dict[str, Any]) -> str:
+        user_id = self.niconico_user_id_from_row(row)
+        return f"https://www.nicovideo.jp/user/{user_id}" if user_id else ""
+
+    @staticmethod
+    def niconico_user_id_from_row(row: dict[str, Any]) -> str:
+        for key in ("raw_user_id", "user_id"):
+            value = str(row.get(key) or "").strip()
+            if value and value != "0" and value.isdecimal():
+                return value
+        return ""
 
     def forget_listener_history_dialog(self, dialog: ListenerHistoryDialog) -> None:
         if dialog in self.listener_history_dialogs:
@@ -1434,6 +1460,8 @@ class MainWindow(QMainWindow):
         tables = state.get("tables") if isinstance(state.get("tables"), dict) else {}
         if self.comment_pages:
             tables[COMMENT_TABLE_STATE_KEY] = export_table_state(self.comment_pages[0].table)
+        if hasattr(self, "broadcast_history_tab"):
+            tables[BROADCAST_HISTORY_TABLE_STATE_KEY] = export_table_state(self.broadcast_history_tab.table)
         self.ui_state_store.save(
             {
                 **state,

@@ -20,6 +20,11 @@ from app.services.auto_profile import (
     render_auto_profile_skin,
     run_auto_profile_ai_with_response,
 )
+from app.services.auto_profile.skin_generation import (
+    SKIN_PROMPT_ATTACHMENT_MARKDOWN,
+    SKIN_PROMPT_ATTACHMENT_SOURCE,
+    build_codex_skin_prompt,
+)
 
 
 class AutoProfileWorkflowTests(unittest.TestCase):
@@ -164,6 +169,36 @@ class AutoProfileWorkflowTests(unittest.TestCase):
 
             self.assertEqual(output_path, result_path)
             self.assertTrue(output_path.is_file())
+
+    def test_build_codex_skin_prompt_attaches_embedded_markdown_as_is(self) -> None:
+        plan = AutoProfilePlan(
+            display_name="通りすがり",
+            persona_summary="冷静な論客",
+            skin_concept="帳簿風",
+            skin_prompt="beige ledger",
+            palette=("#eaede1",),
+            font_id=13,
+            voice_id=11,
+        )
+
+        prompt = build_codex_skin_prompt(
+            plan,
+            output_path=Path("skin.png"),
+            width=512,
+            height=32,
+            icon_path="J:/tmp/icon.jpg",
+            icon_summary={"average_color": "#111111"},
+        )
+
+        self.assertIn(f"{SKIN_PROMPT_ATTACHMENT_SOURCE}:", prompt)
+        expected_markdown = (
+            SKIN_PROMPT_ATTACHMENT_MARKDOWN.replace("{{icon_path}}", "J:/tmp/icon.jpg")
+            .replace("{{persona_summary}}", "冷静な論客")
+        )
+        self.assertIn(expected_markdown, prompt)
+        self.assertNotIn("{{icon_path}}", prompt)
+        self.assertNotIn("{{persona_summary}}", prompt)
+        self.assertIn("入力JSON:", prompt)
 
 
 if __name__ == "__main__":
