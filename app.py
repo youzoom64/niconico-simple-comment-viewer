@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import datetime
 from typing import Any
 
-from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, QThread, Qt, QSize, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -102,6 +102,9 @@ EVENT_KIND_LABELS = {
 }
 
 
+MAX_COMMENT_PAGES = 20
+
+
 def format_event_counts(counts: Counter[str]) -> str:
     if not counts:
         return ""
@@ -109,6 +112,31 @@ def format_event_counts(counts: Counter[str]) -> str:
         f"{EVENT_KIND_LABELS.get(str(kind), str(kind))}:{count}"
         for kind, count in counts.items()
     )
+
+
+class CommentTabBar(QTabBar):
+    MIN_TAB_WIDTH = 80
+    MAX_TAB_WIDTH = 280
+    ADD_TAB_WIDTH = 44
+    TAB_HEIGHT = 32
+
+    def tabSizeHint(self, index: int) -> QSize:  # noqa: N802 - Qt override
+        size = super().tabSizeHint(index)
+        width = self.ADD_TAB_WIDTH if self.tabText(index) == "+" else self.comment_tab_width()
+        return QSize(width, max(self.TAB_HEIGHT, size.height()))
+
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self.updateGeometry()
+
+    def comment_tab_width(self) -> int:
+        normal_count = sum(1 for index in range(self.count()) if self.tabText(index) != "+")
+        if normal_count <= 0:
+            return self.MIN_TAB_WIDTH
+        owner_width = self.parentWidget().width() if self.parentWidget() else self.width()
+        available = max(0, owner_width - self.ADD_TAB_WIDTH)
+        width = available // normal_count if available else self.MIN_TAB_WIDTH
+        return max(self.MIN_TAB_WIDTH, min(self.MAX_TAB_WIDTH, width))
 
 
 class FetchWorker(QObject):
@@ -260,6 +288,7 @@ class MainWindow(QMainWindow):
         self.auto_profile_result_dialogs: list[AutoProfileResultDialog] = []
 
         self.comment_tab_widget = QTabWidget()
+        self.comment_tab_widget.setTabBar(CommentTabBar())
         self.comment_tab_widget.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
         self.comment_tab_widget.tabBar().setExpanding(False)
         self.comment_tab_widget.tabBar().setUsesScrollButtons(True)
@@ -303,6 +332,9 @@ class MainWindow(QMainWindow):
         self.append_log("INFO", f"VOICEVOX FIFO起動: workers={self.app_config.voicevox_worker_count}")
 
     def add_comment_page(self, title: str | None = None) -> CommentPage:
+        if len(self.comment_pages) >= MAX_COMMENT_PAGES:
+            QMessageBox.information(self, "放送タブ上限", f"放送タブは{MAX_COMMENT_PAGES}個まで")
+            return self.current_comment_page()
         page = CommentPage(title or f"放送{len(self.comment_pages) + 1}")
         page.connect_button.clicked.connect(lambda _checked=False, p=page: self.start_stream(p))
         page.fetch_button.clicked.connect(lambda _checked=False, p=page: self.start_fetch(p))
@@ -412,12 +444,7 @@ class MainWindow(QMainWindow):
         if index < 0:
             return
         title = page.program_title.strip()
-        raw_tab_text = f"{page.title} {title}" if title else page.title
-        tab_text = self.comment_tab_widget.fontMetrics().elidedText(
-            raw_tab_text,
-            Qt.TextElideMode.ElideRight,
-            240,
-        )
+        tab_text = f"{page.title} {title}" if title else page.title
         tooltip = "\n".join(
             item
             for item in (
