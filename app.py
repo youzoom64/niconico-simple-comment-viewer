@@ -120,6 +120,10 @@ class CommentTabBar(QTabBar):
     ADD_TAB_WIDTH = 44
     TAB_HEIGHT = 32
 
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._available_width = 0
+
     def tabSizeHint(self, index: int) -> QSize:  # noqa: N802 - Qt override
         size = super().tabSizeHint(index)
         width = self.ADD_TAB_WIDTH if self.tabText(index) == "+" else self.comment_tab_width()
@@ -129,11 +133,27 @@ class CommentTabBar(QTabBar):
         super().resizeEvent(event)
         self.updateGeometry()
 
+    def set_available_width(self, width: int) -> None:
+        width = max(0, int(width))
+        if width == self._available_width:
+            return
+        self._available_width = width
+        self.refresh_layout()
+
+    def refresh_layout(self) -> None:
+        self.updateGeometry()
+        parent = self.parentWidget()
+        if parent is not None:
+            parent.updateGeometry()
+        for index in range(self.count()):
+            self.setTabText(index, self.tabText(index))
+        self.update()
+
     def comment_tab_width(self) -> int:
         normal_count = sum(1 for index in range(self.count()) if self.tabText(index) != "+")
         if normal_count <= 0:
             return self.MIN_TAB_WIDTH
-        owner_width = self.parentWidget().width() if self.parentWidget() else self.width()
+        owner_width = self._available_width or (self.parentWidget().width() if self.parentWidget() else self.width())
         available = max(0, owner_width - self.ADD_TAB_WIDTH)
         width = available // normal_count if available else self.MIN_TAB_WIDTH
         return max(self.MIN_TAB_WIDTH, min(self.MAX_TAB_WIDTH, width))
@@ -331,6 +351,17 @@ class MainWindow(QMainWindow):
         self.voicevox_pipeline.start()
         self.append_log("INFO", f"VOICEVOX FIFO起動: workers={self.app_config.voicevox_worker_count}")
 
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self.refresh_comment_tab_widths()
+
+    def refresh_comment_tab_widths(self) -> None:
+        if not hasattr(self, "comment_tab_widget"):
+            return
+        tab_bar = self.comment_tab_widget.tabBar()
+        if isinstance(tab_bar, CommentTabBar):
+            tab_bar.set_available_width(self.comment_tab_widget.width())
+
     def add_comment_page(self, title: str | None = None) -> CommentPage:
         if len(self.comment_pages) >= MAX_COMMENT_PAGES:
             QMessageBox.information(self, "放送タブ上限", f"放送タブは{MAX_COMMENT_PAGES}個まで")
@@ -422,6 +453,7 @@ class MainWindow(QMainWindow):
         self.comment_tab_widget.setCurrentIndex(index)
         self.update_comment_tab_text(page)
         self.ensure_comment_add_tab()
+        self.refresh_comment_tab_widths()
         if len(self.comment_pages) == 1:
             connect_persistent_table_state(page.table, self.ui_state_store, COMMENT_TABLE_STATE_KEY)
         return page
@@ -456,6 +488,7 @@ class MainWindow(QMainWindow):
         )
         self.comment_tab_widget.setTabText(index, tab_text)
         self.comment_tab_widget.tabBar().setTabToolTip(index, tooltip or tab_text)
+        self.refresh_comment_tab_widths()
 
     def load_broadcast_metadata(self, lv: str) -> BroadcastHistoryMetadata:
         try:
@@ -497,6 +530,7 @@ class MainWindow(QMainWindow):
         tab_bar.setTabToolTip(index, "放送タブ追加")
         tab_bar.setTabButton(index, QTabBar.ButtonPosition.LeftSide, None)
         tab_bar.setTabButton(index, QTabBar.ButtonPosition.RightSide, None)
+        self.refresh_comment_tab_widths()
 
     def handle_comment_tab_clicked(self, index: int) -> None:
         if self.comment_tab_widget.widget(index) is self.comment_add_tab:
@@ -527,6 +561,7 @@ class MainWindow(QMainWindow):
             self.comment_tab_widget.removeTab(index)
         page.deleteLater()
         self.ensure_comment_add_tab()
+        self.refresh_comment_tab_widths()
 
     def stop_comment_page(self, page: CommentPage) -> None:
         if page.worker:
