@@ -18,11 +18,18 @@ from PyQt6.QtWidgets import (
 )
 
 from app.db.connection import database_session
-from app.db.repositories.profiles import delete_live_user_profile, list_live_user_profiles, upsert_live_user_profile
+from app.db.repositories.profiles import (
+    apply_live_user_profile_preset,
+    delete_live_user_profile,
+    list_live_user_profile_presets,
+    list_live_user_profiles,
+    upsert_live_user_profile,
+)
 from app.db.schema import initialize_database
 from app.gui.common.context_menu import install_table_copy_menu
 from app.gui.common.font_combo import FontFamilyCombo
 from app.gui.common.github_skin_picker import SkinPreviewButton, select_github_skin
+from app.gui.common.presentation_presets import presentation_preset_label
 from app.gui.common.scroll_guard import capture_scroll, restore_scroll
 from app.gui.common.table_state import configure_table_header, connect_persistent_table_state, restore_persistent_table_state
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
@@ -32,7 +39,7 @@ from app.settings.ui_state import UiStateStore
 
 
 FONT_SIZE_OPTIONS = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 44, 48, 56, 64, 72, 84, 96]
-TABLE_STATE_KEY = "live_users_columns_v3"
+TABLE_STATE_KEY = "live_users_columns_v4"
 
 
 class LiveUsersTab(QWidget):
@@ -41,6 +48,7 @@ class LiveUsersTab(QWidget):
         ("read_aloud_enabled", "読み上げ"),
         ("skin_output_enabled", "スキン"),
         ("list_output_enabled", "通常リスト"),
+        ("presentation_preset", "プリセット"),
         ("__icon__", "アイコン"),
         ("user_id", "アカウントID"),
         ("display_name", "表示名"),
@@ -55,6 +63,7 @@ class LiveUsersTab(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.rows: list[dict[str, Any]] = []
+        self.presets_by_user: dict[str, dict[int, dict[str, Any]]] = {}
         self.loading_table = False
         self.settings_store = JsonSettingsStore()
         self.ui_state_store = UiStateStore()
@@ -66,7 +75,7 @@ class LiveUsersTab(QWidget):
         self.table = QTableWidget(0, len(self.columns))
         self.table.setIconSize(QSize(32, 32))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
-        configure_table_header(self.table, [70, 90, 80, 100, 72, 180, 170, 100, 540, 170, 90, 130, 190])
+        configure_table_header(self.table, [70, 90, 80, 100, 170, 72, 180, 170, 100, 540, 170, 90, 130, 190])
         restore_persistent_table_state(self.table, self.ui_state_store, TABLE_STATE_KEY)
         connect_persistent_table_state(self.table, self.ui_state_store, TABLE_STATE_KEY)
         install_table_copy_menu(self.table, self.row_data_for_menu)
@@ -127,6 +136,13 @@ class LiveUsersTab(QWidget):
             with database_session() as conn:
                 initialize_database(conn)
                 self.rows = [dict(row) for row in list_live_user_profiles(conn)]
+                self.presets_by_user = {
+                    str(row.get("user_id") or ""): {
+                        int(preset["slot"]): dict(preset)
+                        for preset in list_live_user_profile_presets(conn, str(row.get("user_id") or ""))
+                    }
+                    for row in self.rows
+                }
             self.table.setRowCount(len(self.rows))
             for row_index, row in enumerate(self.rows):
                 self.table.setRowHeight(row_index, 42)
@@ -138,6 +154,9 @@ class LiveUsersTab(QWidget):
                     elif key in {"read_aloud_enabled", "skin_output_enabled", "list_output_enabled"}:
                         self.table.setItem(row_index, column_index, QTableWidgetItem(""))
                         self.table.setCellWidget(row_index, column_index, self._output_checkbox(row_index, row, key))
+                    elif key == "presentation_preset":
+                        self.table.setItem(row_index, column_index, QTableWidgetItem(""))
+                        self.table.setCellWidget(row_index, column_index, self._preset_combo(row_index, row))
                     elif key == "__icon__":
                         self.table.setItem(row_index, column_index, self._icon_item(row))
                     elif key == "display_name_locked":
@@ -229,6 +248,15 @@ class LiveUsersTab(QWidget):
         checkbox.stateChanged.connect(lambda _state, index=row_index, field=key: self.save_field(index, field, checkbox.isChecked()))
         return checkbox
 
+    def _preset_combo(self, row_index: int, row: dict[str, Any]) -> QComboBox:
+        combo = QComboBox()
+        combo.addItem("枠を選択", "")
+        presets = self.presets_by_user.get(str(row.get("user_id") or ""), {})
+        for slot in range(1, 11):
+            combo.addItem(presentation_preset_label(presets.get(slot), slot), slot)
+        combo.currentIndexChanged.connect(lambda _index, i=row_index, c=combo: self.apply_preset_for_row(i, c.currentData()))
+        return combo
+
     def _locked_checkbox(self, row_index: int, row: dict[str, Any]) -> QCheckBox:
         checkbox = QCheckBox()
         checkbox.setChecked(bool(row.get("display_name_locked")))
@@ -317,6 +345,25 @@ class LiveUsersTab(QWidget):
     def save_field_and_reload(self, row_index: int, key: str, value: Any) -> None:
         self.save_field(row_index, key, value)
         self.reload()
+
+    def apply_preset_for_row(self, row_index: int, slot: Any) -> None:
+        if self.loading_table or not slot:
+            return
+        row = self.row_data_for_menu(row_index)
+        if not row:
+            return
+        user_id = str(row.get("user_id") or "")
+        if not user_id:
+            return
+        try:
+            slot_number = int(slot)
+        except (TypeError, ValueError):
+            return
+        with database_session() as conn:
+            initialize_database(conn)
+            saved = apply_live_user_profile_preset(conn, user_id, slot_number)
+        if saved is not None:
+            self.reload(select_user_id=user_id)
 
     def normalized_profile(self, profile: dict[str, Any]) -> dict[str, Any]:
         profile["font_family"] = normalize_basic_label(profile.get("font_family"))

@@ -6,6 +6,9 @@ from typing import Any
 from app.db.schema import register_live_user_profile_skin
 
 
+PRESET_SLOTS = range(1, 11)
+
+
 def upsert_live_user_profile(conn: sqlite3.Connection, profile: dict[str, Any]) -> None:
     user_id = str(profile.get("user_id") or "")
     skin_path = str(profile.get("skin_path") or "")
@@ -92,8 +95,146 @@ def list_live_user_profile_skins(conn: sqlite3.Connection, user_id: str) -> list
     )
 
 
+def upsert_live_user_profile_preset(conn: sqlite3.Connection, preset: dict[str, Any]) -> None:
+    user_id = str(preset.get("user_id") or "").strip()
+    slot = normalize_preset_slot(preset.get("slot"))
+    if not user_id:
+        raise ValueError("user_id is required")
+    conn.execute(
+        """
+        INSERT INTO live_user_profile_presets(
+            user_id, slot, preset_name,
+            read_aloud_enabled, skin_output_enabled, list_output_enabled,
+            skin_path, skin_width, skin_height, font_family, font_size, font_color,
+            voicevox_speaker, voicevox_style, source
+        )
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, slot) DO UPDATE SET
+            preset_name = excluded.preset_name,
+            read_aloud_enabled = excluded.read_aloud_enabled,
+            skin_output_enabled = excluded.skin_output_enabled,
+            list_output_enabled = excluded.list_output_enabled,
+            skin_path = excluded.skin_path,
+            skin_width = excluded.skin_width,
+            skin_height = excluded.skin_height,
+            font_family = excluded.font_family,
+            font_size = excluded.font_size,
+            font_color = excluded.font_color,
+            voicevox_speaker = excluded.voicevox_speaker,
+            voicevox_style = excluded.voicevox_style,
+            source = excluded.source,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            user_id,
+            slot,
+            str(preset.get("preset_name") or f"枠{slot}"),
+            1 if preset.get("read_aloud_enabled", True) else 0,
+            1 if preset.get("skin_output_enabled", True) else 0,
+            1 if preset.get("list_output_enabled", True) else 0,
+            str(preset.get("skin_path") or ""),
+            optional_positive_int(preset.get("skin_width")),
+            optional_positive_int(preset.get("skin_height")),
+            str(preset.get("font_family") or ""),
+            optional_positive_int(preset.get("font_size")),
+            str(preset.get("font_color") or ""),
+            str(preset.get("voicevox_speaker") or ""),
+            str(preset.get("voicevox_style") or ""),
+            str(preset.get("source") or "manual"),
+        ),
+    )
+
+
+def get_live_user_profile_preset(conn: sqlite3.Connection, user_id: str, slot: int) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT *
+        FROM live_user_profile_presets
+        WHERE user_id = ? AND slot = ?
+        """,
+        (str(user_id or "").strip(), normalize_preset_slot(slot)),
+    ).fetchone()
+
+
+def list_live_user_profile_presets(conn: sqlite3.Connection, user_id: str) -> list[sqlite3.Row]:
+    return list(
+        conn.execute(
+            """
+            SELECT *
+            FROM live_user_profile_presets
+            WHERE user_id = ?
+            ORDER BY slot
+            """,
+            (str(user_id or "").strip(),),
+        )
+    )
+
+
+def apply_live_user_profile_preset(conn: sqlite3.Connection, user_id: str, slot: int) -> sqlite3.Row | None:
+    user_id = str(user_id or "").strip()
+    preset = get_live_user_profile_preset(conn, user_id, slot)
+    if preset is None:
+        return None
+    profile = profile_from_preset(get_live_user_profile(conn, user_id), preset, user_id)
+    upsert_live_user_profile(conn, profile)
+    return get_live_user_profile(conn, user_id)
+
+
 def delete_live_user_profile(conn: sqlite3.Connection, user_id: str) -> None:
     conn.execute("DELETE FROM live_user_profiles WHERE user_id = ?", (user_id,))
+
+
+def profile_preset_from_profile(profile: dict[str, Any], slot: int, *, source: str = "manual") -> dict[str, Any]:
+    slot = normalize_preset_slot(slot)
+    return {
+        "user_id": str(profile.get("user_id") or "").strip(),
+        "slot": slot,
+        "preset_name": str(profile.get("preset_name") or f"枠{slot}"),
+        "read_aloud_enabled": bool(profile.get("read_aloud_enabled", True)),
+        "skin_output_enabled": bool(profile.get("skin_output_enabled", True)),
+        "list_output_enabled": bool(profile.get("list_output_enabled", True)),
+        "skin_path": str(profile.get("skin_path") or ""),
+        "skin_width": optional_positive_int(profile.get("skin_width")),
+        "skin_height": optional_positive_int(profile.get("skin_height")),
+        "font_family": str(profile.get("font_family") or ""),
+        "font_size": optional_positive_int(profile.get("font_size")),
+        "font_color": str(profile.get("font_color") or ""),
+        "voicevox_speaker": str(profile.get("voicevox_speaker") or ""),
+        "voicevox_style": str(profile.get("voicevox_style") or ""),
+        "source": source,
+    }
+
+
+def profile_from_preset(existing: sqlite3.Row | None, preset: sqlite3.Row, user_id: str) -> dict[str, Any]:
+    return {
+        "enabled": bool(row_value(existing, "enabled", True)),
+        "user_id": user_id,
+        "display_name": str(row_value(existing, "display_name", "") or ""),
+        "display_name_locked": bool(row_value(existing, "display_name_locked", False)),
+        "read_aloud_enabled": bool(row_value(preset, "read_aloud_enabled", True)),
+        "skin_output_enabled": bool(row_value(preset, "skin_output_enabled", True)),
+        "list_output_enabled": bool(row_value(preset, "list_output_enabled", True)),
+        "skin_path": str(row_value(preset, "skin_path", "") or ""),
+        "skin_width": optional_positive_int(row_value(preset, "skin_width", 0)),
+        "skin_height": optional_positive_int(row_value(preset, "skin_height", 0)),
+        "font_family": str(row_value(preset, "font_family", "") or ""),
+        "font_size": optional_positive_int(row_value(preset, "font_size", 0)),
+        "font_color": str(row_value(preset, "font_color", "") or ""),
+        "voicevox_speaker": str(row_value(preset, "voicevox_speaker", "") or ""),
+        "voicevox_style": str(row_value(preset, "voicevox_style", "") or ""),
+        "icon_path": optional_row_text(existing, "icon_path"),
+        "icon_source": optional_row_text(existing, "icon_source"),
+    }
+
+
+def normalize_preset_slot(value: Any) -> int:
+    try:
+        slot = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("slot must be 1-10") from exc
+    if slot not in PRESET_SLOTS:
+        raise ValueError("slot must be 1-10")
+    return slot
 
 
 def optional_positive_int(value: Any) -> int | None:
@@ -108,3 +249,18 @@ def optional_text(profile: dict[str, Any], key: str) -> str | None:
     if key not in profile:
         return None
     return str(profile.get(key) or "")
+
+
+def row_value(row: Any | None, key: str, default: Any) -> Any:
+    if row is None:
+        return default
+    try:
+        return row[key]
+    except (KeyError, IndexError):
+        return default
+
+
+def optional_row_text(row: Any | None, key: str) -> str | None:
+    if row is None:
+        return None
+    return str(row_value(row, key, "") or "")

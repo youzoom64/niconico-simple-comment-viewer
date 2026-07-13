@@ -43,7 +43,7 @@ class EventKindPreset:
     def render_display_text(self, event: dict[str, Any]) -> str:
         if not self.enabled or not self.display_template:
             return str(event.get("content") or "")
-        values = format_values(event)
+        values = format_values(event, self.event_kind)
         return self.display_template.format_map(SafeFormatValues(values))
 
 
@@ -52,12 +52,12 @@ class SafeFormatValues(dict[str, Any]):
         return "{" + key + "}"
 
 
-def format_values(event: dict[str, Any]) -> dict[str, Any]:
+def format_values(event: dict[str, Any], event_kind: str = "") -> dict[str, Any]:
     values = {key: value for key, value in event.items() if not isinstance(value, (dict, list))}
     payload = event.get("payload")
     if isinstance(payload, dict):
         values.update(flatten_payload(payload))
-        event_message = summarize_event_message(str(event.get("kind") or event.get("event_kind") or self_kind(values)), payload)
+        event_message = summarize_event_message(str(event.get("kind") or event.get("event_kind") or event_kind or self_kind(values)), payload)
         if event_message:
             values.setdefault("message", event_message)
             values.setdefault("content", event_message)

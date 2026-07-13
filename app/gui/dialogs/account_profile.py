@@ -4,12 +4,14 @@ from typing import Any
 
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -17,10 +19,17 @@ from PyQt6.QtWidgets import (
 )
 
 from app.db.connection import database_session
-from app.db.repositories.profiles import get_live_user_profile, upsert_live_user_profile
+from app.db.repositories.profiles import (
+    get_live_user_profile,
+    get_live_user_profile_preset,
+    profile_preset_from_profile,
+    upsert_live_user_profile,
+    upsert_live_user_profile_preset,
+)
 from app.db.schema import initialize_database
 from app.gui.common.font_combo import FontFamilyCombo
 from app.gui.common.github_skin_picker import select_github_skin
+from app.gui.common.presentation_presets import presentation_preset_label
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
 from app.settings.store import JsonSettingsStore
 
@@ -35,6 +44,11 @@ class AccountProfileDialog(QDialog):
         self.setWindowTitle(f"アカウント演出設定 - {self.account_id}")
         self.resize(620, 360)
 
+        self.preset_slot_input = QComboBox()
+        for slot in range(1, 11):
+            self.preset_slot_input.addItem(f"枠{slot}", slot)
+        self.preset_load_button = QPushButton("枠を読込")
+        self.preset_save_button = QPushButton("枠へ保存")
         self.enabled_input = QCheckBox("有効")
         self.enabled_input.setChecked(True)
         self.read_aloud_enabled_input = QCheckBox("読み上げ")
@@ -73,6 +87,11 @@ class AccountProfileDialog(QDialog):
 
     def _build_layout(self) -> None:
         form = QFormLayout()
+        preset_row = QHBoxLayout()
+        preset_row.addWidget(self.preset_slot_input, 1)
+        preset_row.addWidget(self.preset_load_button)
+        preset_row.addWidget(self.preset_save_button)
+        form.addRow("プリセット", preset_row)
         form.addRow("", self.enabled_input)
         output_row = QHBoxLayout()
         output_row.addWidget(self.read_aloud_enabled_input)
@@ -110,6 +129,8 @@ class AccountProfileDialog(QDialog):
         self.setLayout(layout)
 
     def _connect(self) -> None:
+        self.preset_load_button.clicked.connect(self.load_selected_preset)
+        self.preset_save_button.clicked.connect(self.save_selected_preset)
         self.skin_github_button.clicked.connect(self.select_github_skin)
         self.skin_browse_button.clicked.connect(self.browse_skin)
         self.voicevox_reload_button.clicked.connect(self.reload_voicevox_styles)
@@ -151,6 +172,9 @@ class AccountProfileDialog(QDialog):
             row = get_live_user_profile(conn, self.account_id)
         if row is None:
             return
+        self.apply_profile_values(row)
+
+    def apply_profile_values(self, row: Any) -> None:
         self.enabled_input.setChecked(bool(row_value(row, "enabled", 1)))
         self.read_aloud_enabled_input.setChecked(bool(row_value(row, "read_aloud_enabled", 1)))
         self.skin_output_enabled_input.setChecked(bool(row_value(row, "skin_output_enabled", 1)))
@@ -167,7 +191,45 @@ class AccountProfileDialog(QDialog):
         self.voicevox_style_input.set_current_style_id(str(row_value(row, "voicevox_style", "") or ""))
 
     def save_profile(self) -> None:
-        profile = {
+        profile = self.current_profile()
+        with database_session() as conn:
+            initialize_database(conn)
+            upsert_live_user_profile(conn, profile)
+        self.accept()
+
+    def load_selected_preset(self) -> None:
+        slot = int(self.preset_slot_input.currentData() or 1)
+        with database_session() as conn:
+            initialize_database(conn)
+            row = get_live_user_profile_preset(conn, self.account_id, slot)
+        if row is None:
+            QMessageBox.information(self, "プリセット未保存", f"枠{slot}にはまだ演出設定が保存されていません。")
+            return
+        self.apply_preset_values(row)
+
+    def save_selected_preset(self) -> None:
+        slot = int(self.preset_slot_input.currentData() or 1)
+        preset = profile_preset_from_profile(self.current_profile(), slot, source="account_dialog")
+        with database_session() as conn:
+            initialize_database(conn)
+            upsert_live_user_profile_preset(conn, preset)
+        QMessageBox.information(self, "プリセット保存", presentation_preset_label(preset, slot))
+
+    def apply_preset_values(self, row: Any) -> None:
+        self.read_aloud_enabled_input.setChecked(bool(row_value(row, "read_aloud_enabled", 1)))
+        self.skin_output_enabled_input.setChecked(bool(row_value(row, "skin_output_enabled", 1)))
+        self.list_output_enabled_input.setChecked(bool(row_value(row, "list_output_enabled", 1)))
+        self.skin_path_input.setText(str(row_value(row, "skin_path", "") or ""))
+        self.skin_width_input.setValue(int(row_value(row, "skin_width", 512) or 512))
+        self.skin_height_input.setValue(int(row_value(row, "skin_height", 32) or 32))
+        self.font_family_input.set_current_font_family(str(row_value(row, "font_family", "") or ""))
+        self.font_size_input.setValue(int(row_value(row, "font_size", 32) or 32))
+        self.font_color_input.setText(str(row_value(row, "font_color", "#ffffff") or "#ffffff"))
+        self.voicevox_speaker_input.set_current_style_id(str(row_value(row, "voicevox_speaker", "") or ""))
+        self.voicevox_style_input.set_current_style_id(str(row_value(row, "voicevox_style", "") or ""))
+
+    def current_profile(self) -> dict[str, Any]:
+        return {
             "enabled": self.enabled_input.isChecked(),
             "read_aloud_enabled": self.read_aloud_enabled_input.isChecked(),
             "skin_output_enabled": self.skin_output_enabled_input.isChecked(),
@@ -184,10 +246,6 @@ class AccountProfileDialog(QDialog):
             "voicevox_speaker": self.voicevox_speaker_input.current_style_id(),
             "voicevox_style": self.voicevox_style_input.current_style_id(),
         }
-        with database_session() as conn:
-            initialize_database(conn)
-            upsert_live_user_profile(conn, profile)
-        self.accept()
 
 
 def row_value(row: Any, key: str, default: Any) -> Any:

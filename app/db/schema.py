@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 
-SCHEMA_VERSION = 5
+from app.db.profile_presets_schema import backfill_live_user_profile_presets, ensure_live_user_profile_preset_table
+
+SCHEMA_VERSION = 6
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -82,6 +84,27 @@ def create_schema(conn: sqlite3.Connection) -> None:
             UNIQUE(user_id, skin_path)
         );
 
+        CREATE TABLE IF NOT EXISTS live_user_profile_presets (
+            user_id TEXT NOT NULL,
+            slot INTEGER NOT NULL CHECK(slot BETWEEN 1 AND 10),
+            preset_name TEXT NOT NULL DEFAULT '',
+            read_aloud_enabled INTEGER NOT NULL DEFAULT 1,
+            skin_output_enabled INTEGER NOT NULL DEFAULT 1,
+            list_output_enabled INTEGER NOT NULL DEFAULT 1,
+            skin_path TEXT,
+            skin_width INTEGER,
+            skin_height INTEGER,
+            font_family TEXT,
+            font_size INTEGER,
+            font_color TEXT,
+            voicevox_speaker TEXT,
+            voicevox_style TEXT,
+            source TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(user_id, slot)
+        );
+
         CREATE TABLE IF NOT EXISTS event_kind_presets (
             event_kind TEXT PRIMARY KEY,
             enabled INTEGER NOT NULL DEFAULT 1,
@@ -139,6 +162,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_normalized_events_user_id ON normalized_events(user_id);
         CREATE INDEX IF NOT EXISTS idx_live_user_profile_skins_user_id
             ON live_user_profile_skins(user_id, slot);
+        CREATE INDEX IF NOT EXISTS idx_live_user_profile_presets_user_id
+            ON live_user_profile_presets(user_id, slot);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_normalized_events_raw_event_id
             ON normalized_events(raw_event_id)
             WHERE raw_event_id IS NOT NULL;
@@ -159,6 +184,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
     ensure_live_user_profile_columns(conn)
     ensure_live_user_profile_skin_table(conn)
     backfill_live_user_profile_skins(conn)
+    ensure_live_user_profile_preset_table(conn)
+    backfill_live_user_profile_presets(conn)
     ensure_event_kind_preset_columns(conn)
     ensure_broadcast_history_columns(conn)
 
