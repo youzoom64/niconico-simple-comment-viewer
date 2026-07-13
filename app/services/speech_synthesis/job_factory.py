@@ -24,6 +24,8 @@ def build_voicevox_submission(
     comment_no: int,
     volume_scale: float = 1.0,
 ) -> VoicevoxSubmission | None:
+    if not plan.read_aloud_enabled:
+        return None
     comment = build_comment_event(row, plan, comment_no)
     job = SpeechSynthesisJob(
         comment=comment,

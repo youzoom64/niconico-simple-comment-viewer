@@ -38,6 +38,9 @@ TABLE_STATE_KEY = "live_users_columns_v3"
 class LiveUsersTab(QWidget):
     columns = [
         ("enabled", "有効"),
+        ("read_aloud_enabled", "読み上げ"),
+        ("skin_output_enabled", "スキン"),
+        ("list_output_enabled", "通常リスト"),
         ("__icon__", "アイコン"),
         ("user_id", "アカウントID"),
         ("display_name", "表示名"),
@@ -63,7 +66,7 @@ class LiveUsersTab(QWidget):
         self.table = QTableWidget(0, len(self.columns))
         self.table.setIconSize(QSize(32, 32))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
-        configure_table_header(self.table, [70, 72, 180, 170, 100, 540, 170, 90, 130, 190])
+        configure_table_header(self.table, [70, 90, 80, 100, 72, 180, 170, 100, 540, 170, 90, 130, 190])
         restore_persistent_table_state(self.table, self.ui_state_store, TABLE_STATE_KEY)
         connect_persistent_table_state(self.table, self.ui_state_store, TABLE_STATE_KEY)
         install_table_copy_menu(self.table, self.row_data_for_menu)
@@ -132,6 +135,9 @@ class LiveUsersTab(QWidget):
                     if key == "enabled":
                         self.table.setItem(row_index, column_index, QTableWidgetItem(""))
                         self.table.setCellWidget(row_index, column_index, self._enabled_checkbox(row_index, row))
+                    elif key in {"read_aloud_enabled", "skin_output_enabled", "list_output_enabled"}:
+                        self.table.setItem(row_index, column_index, QTableWidgetItem(""))
+                        self.table.setCellWidget(row_index, column_index, self._output_checkbox(row_index, row, key))
                     elif key == "__icon__":
                         self.table.setItem(row_index, column_index, self._icon_item(row))
                     elif key == "display_name_locked":
@@ -209,6 +215,18 @@ class LiveUsersTab(QWidget):
         checkbox.setChecked(bool(row.get("enabled")))
         checkbox.setToolTip("このアカウントID設定を有効にする")
         checkbox.stateChanged.connect(lambda _state, index=row_index: self.save_field(index, "enabled", checkbox.isChecked()))
+        return checkbox
+
+    def _output_checkbox(self, row_index: int, row: dict[str, Any], key: str) -> QCheckBox:
+        checkbox = QCheckBox()
+        checkbox.setChecked(bool(row.get(key, True)))
+        tooltips = {
+            "read_aloud_enabled": "このアカウントIDを読み上げる",
+            "skin_output_enabled": "右から左のスキン/フォント表示に出す",
+            "list_output_enabled": "通常リストに出す",
+        }
+        checkbox.setToolTip(tooltips.get(key, ""))
+        checkbox.stateChanged.connect(lambda _state, index=row_index, field=key: self.save_field(index, field, checkbox.isChecked()))
         return checkbox
 
     def _locked_checkbox(self, row_index: int, row: dict[str, Any]) -> QCheckBox:

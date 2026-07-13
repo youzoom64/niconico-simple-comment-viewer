@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -50,6 +50,9 @@ def create_schema(conn: sqlite3.Connection) -> None:
             user_id TEXT PRIMARY KEY,
             display_name TEXT,
             enabled INTEGER NOT NULL DEFAULT 1,
+            read_aloud_enabled INTEGER NOT NULL DEFAULT 1,
+            skin_output_enabled INTEGER NOT NULL DEFAULT 1,
+            list_output_enabled INTEGER NOT NULL DEFAULT 1,
             skin_path TEXT,
             skin_width INTEGER,
             skin_height INTEGER,
@@ -167,6 +170,9 @@ def ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -
 
 
 def ensure_live_user_profile_columns(conn: sqlite3.Connection) -> None:
+    ensure_column(conn, "live_user_profiles", "read_aloud_enabled", "INTEGER NOT NULL DEFAULT 1")
+    ensure_column(conn, "live_user_profiles", "skin_output_enabled", "INTEGER NOT NULL DEFAULT 1")
+    ensure_column(conn, "live_user_profiles", "list_output_enabled", "INTEGER NOT NULL DEFAULT 1")
     ensure_column(conn, "live_user_profiles", "skin_width", "INTEGER")
     ensure_column(conn, "live_user_profiles", "skin_height", "INTEGER")
     ensure_column(conn, "live_user_profiles", "display_name_locked", "INTEGER NOT NULL DEFAULT 0")

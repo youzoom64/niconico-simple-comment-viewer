@@ -37,6 +37,12 @@ class AccountProfileDialog(QDialog):
 
         self.enabled_input = QCheckBox("有効")
         self.enabled_input.setChecked(True)
+        self.read_aloud_enabled_input = QCheckBox("読み上げ")
+        self.read_aloud_enabled_input.setChecked(True)
+        self.skin_output_enabled_input = QCheckBox("スキン表示")
+        self.skin_output_enabled_input.setChecked(True)
+        self.list_output_enabled_input = QCheckBox("通常リスト")
+        self.list_output_enabled_input.setChecked(True)
         self.account_id_label = QLabel(self.account_id)
         self.display_name_input = QLineEdit(self.initial_display_name)
         self.display_name_locked_input = QCheckBox("表示名をロック")
@@ -68,6 +74,12 @@ class AccountProfileDialog(QDialog):
     def _build_layout(self) -> None:
         form = QFormLayout()
         form.addRow("", self.enabled_input)
+        output_row = QHBoxLayout()
+        output_row.addWidget(self.read_aloud_enabled_input)
+        output_row.addWidget(self.skin_output_enabled_input)
+        output_row.addWidget(self.list_output_enabled_input)
+        output_row.addStretch(1)
+        form.addRow("出力", output_row)
         form.addRow("アカウントID", self.account_id_label)
         form.addRow("表示名", self.display_name_input)
         form.addRow("", self.display_name_locked_input)
@@ -140,6 +152,9 @@ class AccountProfileDialog(QDialog):
         if row is None:
             return
         self.enabled_input.setChecked(bool(row_value(row, "enabled", 1)))
+        self.read_aloud_enabled_input.setChecked(bool(row_value(row, "read_aloud_enabled", 1)))
+        self.skin_output_enabled_input.setChecked(bool(row_value(row, "skin_output_enabled", 1)))
+        self.list_output_enabled_input.setChecked(bool(row_value(row, "list_output_enabled", 1)))
         self.display_name_input.setText(str(row_value(row, "display_name", self.initial_display_name) or ""))
         self.display_name_locked_input.setChecked(bool(row_value(row, "display_name_locked", 0)))
         self.skin_path_input.setText(str(row_value(row, "skin_path", "") or ""))
@@ -154,6 +169,9 @@ class AccountProfileDialog(QDialog):
     def save_profile(self) -> None:
         profile = {
             "enabled": self.enabled_input.isChecked(),
+            "read_aloud_enabled": self.read_aloud_enabled_input.isChecked(),
+            "skin_output_enabled": self.skin_output_enabled_input.isChecked(),
+            "list_output_enabled": self.list_output_enabled_input.isChecked(),
             "user_id": self.account_id,
             "display_name": self.display_name_input.text().strip(),
             "display_name_locked": self.display_name_locked_input.isChecked(),

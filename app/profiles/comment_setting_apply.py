@@ -49,6 +49,9 @@ def apply_comment_setting_command_to_profile(
     next_display_name = existing_display_name if display_name_locked else (command.display_name or existing_display_name)
     profile = {
         "enabled": True,
+        "read_aloud_enabled": bool(row_value(existing, "read_aloud_enabled", True)),
+        "skin_output_enabled": bool(row_value(existing, "skin_output_enabled", True)),
+        "list_output_enabled": bool(row_value(existing, "list_output_enabled", True)),
         "user_id": account_id,
         "display_name": next_display_name,
         "display_name_locked": display_name_locked,

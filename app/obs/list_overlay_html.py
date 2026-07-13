@@ -248,6 +248,7 @@ async function poll() {
       const payload = await response.json();
       for (const event of payload.events || []) {
         lastId = Math.max(lastId, Number(event.id || 0));
+        if (event.show_list === false) continue;
         addEvent(event);
       }
     } catch (_error) {

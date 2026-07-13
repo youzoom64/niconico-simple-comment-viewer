@@ -184,6 +184,8 @@ def packet_to_overlay_event(event_id: int, packet: RenderPacket) -> dict[str, An
         "outline_color": profile.outline_color or "#000000",
         "duration_seconds": max(1.0, float(profile.duration_seconds)),
         "audio_name": packet.audio_path.name if packet.audio_path else "",
+        "show_skin": bool(packet.comment.raw_payload.get("__skin_output_enabled", True)),
+        "show_list": bool(packet.comment.raw_payload.get("__list_output_enabled", True)),
     }
 
 
@@ -434,6 +436,7 @@ async function poll() {
       const payload = await response.json();
       for (const event of payload.events || []) {
         lastId = Math.max(lastId, Number(event.id || 0));
+        if (event.show_skin === false) continue;
         addEvent(event);
       }
     } catch (_error) {

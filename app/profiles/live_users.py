@@ -12,6 +12,9 @@ class LiveUserProfile:
     display_name: str = ""
     display_name_locked: bool = False
     enabled: bool = True
+    read_aloud_enabled: bool = True
+    skin_output_enabled: bool = True
+    list_output_enabled: bool = True
     skin_path: str = ""
     skin_width: int = 512
     skin_height: int = 32
@@ -32,6 +35,9 @@ class LiveUserProfile:
             display_name=str(row_value(row, "display_name", "") or ""),
             display_name_locked=bool(row_value(row, "display_name_locked", 0)),
             enabled=bool(row_value(row, "enabled", 1)),
+            read_aloud_enabled=bool(row_value(row, "read_aloud_enabled", 1)),
+            skin_output_enabled=bool(row_value(row, "skin_output_enabled", 1)),
+            list_output_enabled=bool(row_value(row, "list_output_enabled", 1)),
             skin_path=str(row_value(row, "skin_path", "") or ""),
             skin_width=int(row_value(row, "skin_width", 0) or 0),
             skin_height=int(row_value(row, "skin_height", 0) or 0),

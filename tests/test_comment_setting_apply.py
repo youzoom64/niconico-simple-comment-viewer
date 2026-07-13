@@ -68,6 +68,9 @@ class CommentSettingApplyTests(unittest.TestCase):
                 "font_color": "#ffffff",
                 "voicevox_speaker": "",
                 "voicevox_style": "9",
+                "read_aloud_enabled": False,
+                "skin_output_enabled": False,
+                "list_output_enabled": False,
             },
         )
 
@@ -86,6 +89,9 @@ class CommentSettingApplyTests(unittest.TestCase):
         self.assertEqual("skin.png", profile["skin_path"])
         self.assertEqual("Reggae One", profile["font_family"])
         self.assertEqual("9", profile["voicevox_style"])
+        self.assertEqual(0, profile["read_aloud_enabled"])
+        self.assertEqual(0, profile["skin_output_enabled"])
+        self.assertEqual(0, profile["list_output_enabled"])
         skins = list_live_user_profile_skins(conn, "1234")
         self.assertEqual(["skin.png"], [row["skin_path"] for row in skins])
 

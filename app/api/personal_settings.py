@@ -68,6 +68,9 @@ def build_personal_setting_context(
                 "font_color",
                 "voice_id",
                 "voicevox_style",
+                "read_aloud_enabled",
+                "skin_output_enabled",
+                "list_output_enabled",
                 "icon_path",
             ],
         },
@@ -111,6 +114,9 @@ def merge_profile_for_payload(
     detected_icon_path = normalize_text(icon.get("path"))
     profile = {
         "enabled": bool_value(payload, "enabled", row_value(existing, "enabled", True)),
+        "read_aloud_enabled": bool_value(payload, "read_aloud_enabled", row_value(existing, "read_aloud_enabled", True)),
+        "skin_output_enabled": bool_value(payload, "skin_output_enabled", row_value(existing, "skin_output_enabled", True)),
+        "list_output_enabled": bool_value(payload, "list_output_enabled", row_value(existing, "list_output_enabled", True)),
         "user_id": user_id,
         "display_name": text_value(payload, "display_name", row_value(existing, "display_name", "")),
         "display_name_locked": bool_value(payload, "display_name_locked", row_value(existing, "display_name_locked", False)),

@@ -24,6 +24,9 @@ class EventProcessingPlan:
     fixed_sound_path: str
     voicevox_speaker: str
     voicevox_style: str
+    read_aloud_enabled: bool
+    skin_output_enabled: bool
+    list_output_enabled: bool
     live_user_profile: LiveUserProfile | None
     event_preset: EventKindPreset | None
 
@@ -51,6 +54,14 @@ def build_event_processing_plan(
     speech_rules = rules_from_rows(list_regex_rules(conn, "speech"))
     obs_text = transform_text(display_base, obs_rules, "obs")
     speech_text = transform_text(display_base, speech_rules, "speech")
+    user_profile_enabled = bool(user_profile and user_profile.enabled)
+    read_aloud_enabled = bool(default_read_aloud_enabled)
+    skin_output_enabled = True
+    list_output_enabled = True
+    if user_profile_enabled and user_profile is not None:
+        read_aloud_enabled = read_aloud_enabled and user_profile.read_aloud_enabled
+        skin_output_enabled = user_profile.skin_output_enabled
+        list_output_enabled = user_profile.list_output_enabled
     default_skin = SkinStyle(
         skin_path=default_skin_path,
         width_px=default_skin_width,
@@ -61,14 +72,17 @@ def build_event_processing_plan(
     )
     event_skin = merge_event_skin(default_skin, event_preset)
     skin = merge_user_skin(event_skin, user_profile)
-    configured_speaker = user_profile.voicevox_speaker if user_profile and user_profile.enabled else ""
-    configured_style = user_profile.voicevox_style if user_profile and user_profile.enabled else ""
+    configured_speaker = user_profile.voicevox_speaker if user_profile_enabled and user_profile is not None else ""
+    configured_style = user_profile.voicevox_style if user_profile_enabled and user_profile is not None else ""
     event_speaker = event_preset.voicevox_speaker if event_preset and event_preset.enabled else ""
     event_style = event_preset.voicevox_style if event_preset and event_preset.enabled else ""
-    fallback_speaker = default_voicevox_speaker if default_read_aloud_enabled else ""
-    fallback_style = default_voicevox_style if default_read_aloud_enabled else ""
+    fallback_speaker = default_voicevox_speaker if read_aloud_enabled else ""
+    fallback_style = default_voicevox_style if read_aloud_enabled else ""
     voicevox_speaker = configured_speaker or event_speaker or fallback_speaker
     voicevox_style = configured_style or event_style or fallback_style
+    if not read_aloud_enabled:
+        voicevox_speaker = ""
+        voicevox_style = ""
     obs_comment = ObsComment(
         text=obs_text,
         lane=lane,
@@ -88,6 +102,9 @@ def build_event_processing_plan(
         fixed_sound_path=fixed_sound_for_preset(event_preset),
         voicevox_speaker=voicevox_speaker,
         voicevox_style=voicevox_style,
+        read_aloud_enabled=read_aloud_enabled,
+        skin_output_enabled=skin_output_enabled,
+        list_output_enabled=list_output_enabled,
         live_user_profile=user_profile,
         event_preset=event_preset,
     )

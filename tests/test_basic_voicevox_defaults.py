@@ -53,6 +53,109 @@ class BasicVoicevoxDefaultsTests(unittest.TestCase):
 
         self.assertEqual("7", plan.voicevox_style)
 
+    def test_profile_read_aloud_off_disables_voicevox_style(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        initialize_database(conn)
+        upsert_live_user_profile(
+            conn,
+            {
+                "enabled": True,
+                "read_aloud_enabled": False,
+                "user_id": "100",
+                "display_name": "user",
+                "skin_path": "",
+                "skin_width": 512,
+                "skin_height": 32,
+                "font_family": "",
+                "font_size": 32,
+                "font_color": "#ffffff",
+                "voicevox_speaker": "",
+                "voicevox_style": "7",
+            },
+        )
+
+        plan = build_event_processing_plan(
+            conn,
+            {"kind": "chat", "user_id": "100", "content": "こんにちは"},
+            default_voicevox_style="3",
+            default_read_aloud_enabled=True,
+        )
+
+        self.assertFalse(plan.read_aloud_enabled)
+        self.assertEqual("", plan.voicevox_style)
+
+    def test_profile_output_flags_are_resolved_independently(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        initialize_database(conn)
+        upsert_live_user_profile(
+            conn,
+            {
+                "enabled": True,
+                "read_aloud_enabled": True,
+                "skin_output_enabled": False,
+                "list_output_enabled": False,
+                "user_id": "100",
+                "display_name": "user",
+                "skin_path": "custom.png",
+                "skin_width": 512,
+                "skin_height": 32,
+                "font_family": "",
+                "font_size": 32,
+                "font_color": "#ffffff",
+                "voicevox_speaker": "",
+                "voicevox_style": "7",
+            },
+        )
+
+        plan = build_event_processing_plan(
+            conn,
+            {"kind": "chat", "user_id": "100", "content": "こんにちは"},
+            default_voicevox_style="3",
+            default_read_aloud_enabled=True,
+        )
+
+        self.assertTrue(plan.read_aloud_enabled)
+        self.assertFalse(plan.skin_output_enabled)
+        self.assertFalse(plan.list_output_enabled)
+
+    def test_disabled_profile_does_not_apply_output_flags(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        initialize_database(conn)
+        upsert_live_user_profile(
+            conn,
+            {
+                "enabled": False,
+                "read_aloud_enabled": False,
+                "skin_output_enabled": False,
+                "list_output_enabled": False,
+                "user_id": "100",
+                "display_name": "user",
+                "skin_path": "custom.png",
+                "skin_width": 512,
+                "skin_height": 32,
+                "font_family": "",
+                "font_size": 32,
+                "font_color": "#ffffff",
+                "voicevox_speaker": "",
+                "voicevox_style": "7",
+            },
+        )
+
+        plan = build_event_processing_plan(
+            conn,
+            {"kind": "chat", "user_id": "100", "content": "こんにちは"},
+            default_voicevox_style="3",
+            default_read_aloud_enabled=True,
+        )
+
+        self.assertTrue(plan.read_aloud_enabled)
+        self.assertTrue(plan.skin_output_enabled)
+        self.assertTrue(plan.list_output_enabled)
+        self.assertEqual("3", plan.voicevox_style)
+
     def test_default_voicevox_style_is_empty_when_default_reading_disabled(self) -> None:
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row

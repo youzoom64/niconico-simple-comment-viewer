@@ -1167,15 +1167,13 @@ class MainWindow(QMainWindow):
             self.auto_profile_result_dialogs.remove(dialog)
 
     def enqueue_voicevox_for_row(self, page: CommentPage, row: dict[str, Any]) -> None:
-        read_aloud_enabled = page.read_aloud_checkbox.isChecked()
-        obs_output_enabled = page.obs_output_checkbox.isChecked()
-        if not read_aloud_enabled and not obs_output_enabled:
+        page_read_aloud_enabled = page.read_aloud_checkbox.isChecked()
+        page_obs_output_enabled = page.obs_output_checkbox.isChecked()
+        if not page_read_aloud_enabled and not page_obs_output_enabled:
             return
         comment_no = self.comment_numbers.issue()
         try:
             row = dict(row)
-            row["__read_aloud_enabled"] = read_aloud_enabled
-            row["__obs_output_enabled"] = obs_output_enabled
             display_name = self.display_name_from_row(row, page)
             if display_name:
                 row["display_name"] = display_name
@@ -1186,7 +1184,7 @@ class MainWindow(QMainWindow):
                     row,
                     default_voicevox_speaker=self.app_config.default_voicevox_speaker,
                     default_voicevox_style=self.app_config.default_voicevox_style,
-                    default_read_aloud_enabled=self.app_config.default_read_aloud_enabled and read_aloud_enabled,
+                    default_read_aloud_enabled=self.app_config.default_read_aloud_enabled and page_read_aloud_enabled,
                     default_skin_path=self.app_config.skin_path,
                     default_skin_width=self.app_config.skin_width,
                     default_skin_height=self.app_config.skin_height,
@@ -1194,6 +1192,16 @@ class MainWindow(QMainWindow):
                     default_font_size=self.app_config.font_size,
                     default_font_color=self.app_config.font_color,
                 )
+            read_aloud_enabled = page_read_aloud_enabled and plan.read_aloud_enabled
+            skin_output_enabled = page_obs_output_enabled and plan.skin_output_enabled
+            list_output_enabled = page_obs_output_enabled and plan.list_output_enabled
+            if not read_aloud_enabled and not skin_output_enabled and not list_output_enabled:
+                self.append_log("TRACE", f"個別出力OFF: no={comment_no}", page)
+                return
+            row["__read_aloud_enabled"] = read_aloud_enabled
+            row["__obs_output_enabled"] = skin_output_enabled or list_output_enabled
+            row["__skin_output_enabled"] = skin_output_enabled
+            row["__list_output_enabled"] = list_output_enabled
             if not read_aloud_enabled:
                 packet = RenderPacket(
                     comment=build_comment_event(row, plan, comment_no),
@@ -1205,6 +1213,9 @@ class MainWindow(QMainWindow):
                 self.append_log("DEBUG", f"OBS直接出力: no={comment_no}", page)
                 return
             submission = build_voicevox_submission(row, plan, comment_no, self.app_config.voice_volume_scale)
+            if submission is None:
+                self.append_log("TRACE", f"VOICEVOX出力OFF: no={comment_no}", page)
+                return
             if not submission.job.text_for_voice:
                 self.append_log("TRACE", f"VOICEVOX空コメント: no={comment_no}", page)
             self.voicevox_pipeline.submit(submission.job, submission.render_profile, submission.text_for_display)
@@ -1215,6 +1226,8 @@ class MainWindow(QMainWindow):
 
     def voicevox_obs_sink(self, packet: Any) -> None:
         if packet.comment.raw_payload.get("__obs_output_enabled") is False:
+            return
+        if not packet.comment.raw_payload.get("__skin_output_enabled", True) and not packet.comment.raw_payload.get("__list_output_enabled", True):
             return
         try:
             event = self.overlay_server.publish(packet)
