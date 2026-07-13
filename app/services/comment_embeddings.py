@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -282,9 +283,11 @@ def save_and_embed_comment_event(
     provider: str = OLLAMA_PROVIDER,
     model: str = "",
     force: bool = False,
+    index_dir: str | Path | None = None,
+    update_index: bool = True,
 ) -> CommentEmbeddingResult:
     normalized_event_id = save_event_row(conn, str(lv or ""), dict(row))
-    return embed_normalized_event(
+    result = embed_normalized_event(
         conn,
         normalized_event_id,
         client=client,
@@ -292,6 +295,17 @@ def save_and_embed_comment_event(
         model=model,
         force=force,
     )
+    if update_index and (result.embedded or result.skipped_reason == "already_embedded"):
+        from app.services.comment_embedding_index import append_comment_embedding_to_index
+
+        append_comment_embedding_to_index(
+            conn,
+            result.normalized_event_id,
+            provider=result.provider,
+            model=result.model,
+            index_dir=index_dir,
+        )
+    return result
 
 
 def list_comment_events_missing_embeddings(
@@ -338,6 +352,8 @@ def embed_missing_comment_events(
     provider: str = OLLAMA_PROVIDER,
     model: str = "",
     limit: int = 500,
+    index_dir: str | Path | None = None,
+    update_index: bool = True,
 ) -> CommentEmbeddingBatchResult:
     resolved_provider = str(provider or OLLAMA_PROVIDER)
     resolved_model = normalize_embedding_model(model or getattr(client, "model", ""))
@@ -353,6 +369,15 @@ def embed_missing_comment_events(
         for row in rows
     )
     embedded_count = sum(1 for result in results if result.embedded)
+    if embedded_count and update_index:
+        from app.services.comment_embedding_index import refresh_comment_embedding_index
+
+        refresh_comment_embedding_index(
+            conn,
+            provider=resolved_provider,
+            model=resolved_model,
+            index_dir=index_dir,
+        )
     return CommentEmbeddingBatchResult(
         scanned_count=len(rows),
         embedded_count=embedded_count,

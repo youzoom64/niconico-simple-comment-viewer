@@ -35,13 +35,17 @@ class ManualAiReplyPromptTests(unittest.TestCase):
             comment_count=42,
             include_broadcaster_transcript=True,
             include_all_comments=True,
+            broadcaster_transcript_text="- 00:01: 配信者の発言",
+            broadcast_comments_text="- No.1 / 視聴者A: コメント本文",
         )
 
         self.assertIn("対象コメント", prompt)
         self.assertIn("No: 3", prompt)
         self.assertIn("ユーザー名: 視聴者A", prompt)
-        self.assertIn(BROADCASTER_TRANSCRIPT_PLACEHOLDER, prompt)
-        self.assertIn(BROADCAST_COMMENTS_PLACEHOLDER, prompt)
+        self.assertIn("配信者の発言", prompt)
+        self.assertIn("コメント本文", prompt)
+        self.assertNotIn(BROADCASTER_TRANSCRIPT_PLACEHOLDER, prompt)
+        self.assertNotIn(BROADCAST_COMMENTS_PLACEHOLDER, prompt)
         self.assertIn("アンカー付きで軽く返す", prompt)
         self.assertIn("30文字以内", prompt)
         self.assertIn("本文だけ", prompt)
@@ -51,6 +55,18 @@ class ManualAiReplyPromptTests(unittest.TestCase):
 
         self.assertIn("放送者の文字起こし: 今回は使わない", prompt)
         self.assertIn("放送全体のコメント: 今回は使わない", prompt)
+        self.assertNotIn(BROADCASTER_TRANSCRIPT_PLACEHOLDER, prompt)
+        self.assertNotIn(BROADCAST_COMMENTS_PLACEHOLDER, prompt)
+
+    def test_prompt_marks_checked_context_without_data(self) -> None:
+        prompt = build_manual_ai_reply_prompt(
+            row={"content": "テスト"},
+            include_broadcaster_transcript=True,
+            include_all_comments=True,
+        )
+
+        self.assertIn("[放送者の文字起こし]\n(実データなし)", prompt)
+        self.assertIn("[放送全体のコメント]\n(実データなし)", prompt)
         self.assertNotIn(BROADCASTER_TRANSCRIPT_PLACEHOLDER, prompt)
         self.assertNotIn(BROADCAST_COMMENTS_PLACEHOLDER, prompt)
 

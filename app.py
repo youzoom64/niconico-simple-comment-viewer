@@ -1473,6 +1473,7 @@ class MainWindow(QMainWindow):
             broadcaster_name=page.broadcaster_name,
             broadcaster_id=page.broadcaster_id,
             comment_count=len(page.rows),
+            broadcast_rows=list(page.rows),
             parent=self,
         )
         self.ai_reply_dialogs.append(dialog)

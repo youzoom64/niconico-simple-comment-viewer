@@ -6,7 +6,7 @@ from typing import Any
 BROADCASTER_TRANSCRIPT_PLACEHOLDER = "{{BROADCASTER_TRANSCRIPT}}"
 BROADCAST_COMMENTS_PLACEHOLDER = "{{BROADCAST_COMMENTS}}"
 DEFAULT_MANUAL_AI_REPLY_PURPOSE = """対象コメントにアンカーした自然な返信を1つ作る
-まだ投稿しないので、返信案だけを確認しやすく出す"""
+まだ自動投稿しないので、返信本文だけを確認しやすく出す"""
 DEFAULT_MANUAL_AI_REPLY_OUTPUT_CONDITIONS = """返信本文だけを出す
 80文字以内
 改行しない
@@ -36,10 +36,21 @@ def build_manual_ai_reply_prompt(
     output_conditions: str = "",
     include_broadcaster_transcript: bool = False,
     include_all_comments: bool = False,
+    broadcaster_transcript_text: str = "",
+    broadcast_comments_text: str = "",
 ) -> str:
     summary = build_target_comment_summary(row, display_name)
-    context_blocks = [_optional_context_block("放送者の文字起こし", include_broadcaster_transcript, BROADCASTER_TRANSCRIPT_PLACEHOLDER)]
-    context_blocks.append(_optional_context_block("放送全体のコメント", include_all_comments, BROADCAST_COMMENTS_PLACEHOLDER))
+    context_blocks = [
+        _optional_context_block(
+            "放送者の文字起こし",
+            include_broadcaster_transcript,
+            broadcaster_transcript_text,
+            BROADCASTER_TRANSCRIPT_PLACEHOLDER,
+        )
+    ]
+    context_blocks.append(
+        _optional_context_block("放送全体のコメント", include_all_comments, broadcast_comments_text, BROADCAST_COMMENTS_PLACEHOLDER)
+    )
     context_text = "\n\n".join(context_blocks)
     purpose_text = _section_text(purpose, DEFAULT_MANUAL_AI_REPLY_PURPOSE)
     output_conditions_text = _section_text(output_conditions, DEFAULT_MANUAL_AI_REPLY_OUTPUT_CONDITIONS)
@@ -69,9 +80,10 @@ def build_manual_ai_reply_prompt(
 """
 
 
-def _optional_context_block(label: str, enabled: bool, placeholder: str) -> str:
+def _optional_context_block(label: str, enabled: bool, text: str, placeholder: str) -> str:
     if enabled:
-        return f"[{label}]\n{placeholder}"
+        body = str(text or "").strip() or "(実データなし)"
+        return f"[{label}]\n{body}"
     return f"- {label}: 今回は使わない"
 
 

@@ -22,8 +22,15 @@ from app.db.repositories.profiles import (
     update_manual_ai_reply_codex_session_id,
     upsert_manual_ai_reply_settings,
 )
+from app.db.repositories.events import list_events_by_lv
 from app.db.schema import initialize_database
+from app.services.manual_ai_reply_context import build_broadcast_comments_context, load_broadcaster_transcript_context
 from app.services.manual_ai_reply_codex import ManualAiReplyCodexResult, run_manual_ai_reply_codex
+from app.services.manual_ai_reply_execution_log import (
+    ManualAiReplyLogPaths,
+    write_manual_ai_reply_prompt_log,
+    write_manual_ai_reply_result_log,
+)
 from app.services.manual_ai_reply_prompt import (
     DEFAULT_MANUAL_AI_REPLY_OUTPUT_CONDITIONS,
     DEFAULT_MANUAL_AI_REPLY_PURPOSE,
@@ -63,6 +70,7 @@ class AiReplyWindowDialog(QDialog):
         broadcaster_name: str = "",
         broadcaster_id: str = "",
         comment_count: int = 0,
+        broadcast_rows: list[dict[str, Any]] | None = None,
         parent: Any | None = None,
     ) -> None:
         super().__init__(parent)
@@ -74,12 +82,16 @@ class AiReplyWindowDialog(QDialog):
         self.broadcaster_name = broadcaster_name
         self.broadcaster_id = broadcaster_id
         self.comment_count = comment_count
+        self.broadcast_rows = list(broadcast_rows or [])
         self.codex_session_id = ""
         self.codex_cwd = Path(__file__).resolve().parents[3]
         self._last_generated_prompt = ""
+        self._broadcast_comments_context: str | None = None
+        self._broadcaster_transcript_context: str | None = None
         self._loading_settings = False
         self._codex_thread: QThread | None = None
         self._codex_worker: ManualAiReplyCodexWorker | None = None
+        self._current_log_paths: ManualAiReplyLogPaths | None = None
 
         self.setWindowTitle("AI返信ウインドウ")
         self.resize(840, 760)
@@ -109,7 +121,7 @@ class AiReplyWindowDialog(QDialog):
 
         self.save_button = QPushButton("このアカウントに設定を保存")
         self.reload_button = QPushButton("保存済み設定を再読込")
-        self.generate_button = QPushButton("Codexで返信案を作成")
+        self.generate_button = QPushButton("Codexで返信を作成")
         self.copy_button = QPushButton("プロンプトをコピー")
         self.close_button = QPushButton("閉じる")
         self.status_label = QLabel("")
@@ -155,7 +167,7 @@ class AiReplyWindowDialog(QDialog):
         layout.addLayout(settings_button_row)
         layout.addWidget(QLabel("送信プロンプト"))
         layout.addWidget(self.prompt_edit, 1)
-        layout.addWidget(QLabel("返信案"))
+        layout.addWidget(QLabel("返信"))
         layout.addWidget(self.result_edit)
         layout.addLayout(bottom_button_row)
         self.setLayout(layout)
@@ -230,8 +242,9 @@ class AiReplyWindowDialog(QDialog):
             self.status_label.setText("プロンプトが空です")
             return
         self.save_settings(show_status=False)
+        self._current_log_paths = write_manual_ai_reply_prompt_log(prompt, context=self._log_context())
         self.result_edit.clear()
-        self.status_label.setText("Codexで返信案を作成中...")
+        self.status_label.setText(f"Codexで返信を作成中... 生プロンプト: {self._current_log_paths.prompt_path}")
         self._set_running(True)
         self._codex_thread = QThread()
         self._codex_worker = ManualAiReplyCodexWorker(prompt, self.codex_session_id, self.codex_cwd)
@@ -242,22 +255,25 @@ class AiReplyWindowDialog(QDialog):
         self._codex_thread.start()
 
     def handle_codex_finished(self, result: ManualAiReplyCodexResult) -> None:
+        write_manual_ai_reply_result_log(self._current_log_paths, result=result)
         if result.ok:
             self.codex_session_id = result.session_id
             self._save_session_id(result.session_id)
             self._refresh_session_label()
             self.result_edit.setPlainText(result.text)
             mode = "resume" if result.resumed else "new"
-            self.status_label.setText(f"返信案を作成しました ({mode})")
+            log_path = self._current_log_paths.prompt_path if self._current_log_paths else ""
+            self.status_label.setText(f"返信を作成しました ({mode}) / 生プロンプト: {log_path}")
         else:
             detail = result.stderr or result.text or f"Codex failed: code={result.returncode}"
             self.result_edit.setPlainText(detail)
-            self.status_label.setText("Codex返信案作成に失敗しました")
+            self.status_label.setText("Codex返信作成に失敗しました")
         self._cleanup_codex_worker()
 
     def handle_codex_failed(self, message: str) -> None:
+        write_manual_ai_reply_result_log(self._current_log_paths, error=message)
         self.result_edit.setPlainText(message)
-        self.status_label.setText("Codex返信案作成に失敗しました")
+        self.status_label.setText("Codex返信作成に失敗しました")
         self._cleanup_codex_worker()
 
     def _build_prompt(self) -> str:
@@ -273,6 +289,8 @@ class AiReplyWindowDialog(QDialog):
             output_conditions=self.output_conditions_edit.toPlainText(),
             include_broadcaster_transcript=self.include_broadcaster_transcript_checkbox.isChecked(),
             include_all_comments=self.include_all_comments_checkbox.isChecked(),
+            broadcaster_transcript_text=self._broadcaster_transcript_text(),
+            broadcast_comments_text=self._broadcast_comments_text(),
         )
 
     def _set_generated_prompt(self) -> None:
@@ -302,6 +320,46 @@ class AiReplyWindowDialog(QDialog):
 
     def _refresh_session_label(self) -> None:
         self.session_value.setText(self.codex_session_id or "未保存")
+
+    def _broadcast_comments_text(self) -> str:
+        if not self.include_all_comments_checkbox.isChecked():
+            return ""
+        if self._broadcast_comments_context is None:
+            rows = self.broadcast_rows or self._load_broadcast_rows_from_db()
+            self._broadcast_comments_context = build_broadcast_comments_context(rows)
+        return self._broadcast_comments_context
+
+    def _broadcaster_transcript_text(self) -> str:
+        if not self.include_broadcaster_transcript_checkbox.isChecked():
+            return ""
+        if self._broadcaster_transcript_context is None:
+            self._broadcaster_transcript_context = load_broadcaster_transcript_context(self.lv)
+        return self._broadcaster_transcript_context
+
+    def _load_broadcast_rows_from_db(self) -> list[dict[str, Any]]:
+        if not self.lv:
+            return []
+        with database_session() as conn:
+            initialize_database(conn)
+            return list_events_by_lv(conn, self.lv)
+
+    def _log_context(self) -> dict[str, Any]:
+        summary = build_target_comment_summary(self.row, self.display_name)
+        return {
+            "account_id": self.account_id,
+            "display_name": self.display_name,
+            "lv": self.lv,
+            "program_title": self.program_title,
+            "broadcaster_name": self.broadcaster_name,
+            "broadcaster_id": self.broadcaster_id,
+            "no": summary.get("no", ""),
+            "time_or_vpos": summary.get("time_or_vpos", ""),
+            "comment_chars": len(summary.get("content", "")),
+            "comment_count": self.comment_count,
+            "session_id_before": self.codex_session_id,
+            "include_broadcaster_transcript": self.include_broadcaster_transcript_checkbox.isChecked(),
+            "include_broadcast_comments": self.include_all_comments_checkbox.isChecked(),
+        }
 
     def _update_account_controls_enabled(self) -> None:
         enabled = bool(self.account_id)
