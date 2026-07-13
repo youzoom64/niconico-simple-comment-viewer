@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from app.audio.player import play_wave_file
+from app.audio.player import ensure_audio_player_process, play_wave_file, stop_audio_player_process
 from app.core.config import AppConfig
 from app.core.logging import (
     LOG_LEVELS,
@@ -356,6 +356,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.tabs)
 
         self.restore_ui_state()
+        try:
+            player_pid = ensure_audio_player_process()
+            self.append_log("INFO", f"VOICEVOX音声再生ヘルパー起動: pid={player_pid}")
+        except Exception as exc:
+            self.append_log("ERROR", f"VOICEVOX音声再生ヘルパー起動失敗: {type(exc).__name__}: {exc}")
         try:
             overlay_url = self.overlay_server.start()
             self.append_log("INFO", f"OBSオーバーレイ起動: {overlay_url}")
@@ -1594,6 +1599,7 @@ class MainWindow(QMainWindow):
             thread.quit()
             thread.wait(3000)
         self.voicevox_pipeline.stop()
+        stop_audio_player_process()
         if hasattr(self, "rtfw_control_tab"):
             self.rtfw_control_tab.shutdown()
         self.overlay_server.stop()
