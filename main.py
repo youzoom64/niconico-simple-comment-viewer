@@ -17,6 +17,7 @@ APP_WIRING_OVERVIEW = {
         "infra": "app/infra",
     },
     "runtime_layers": {
+        "api": "app/api",
         "gui": "app/gui",
         "db": "app/db",
         "events": "app/events",

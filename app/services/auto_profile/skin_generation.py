@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+from dataclasses import dataclass
 from pathlib import Path
-from textwrap import dedent
 from typing import Any, Callable
 
 from app.core.logging import LogSink, log_error, log_execution, log_result
@@ -11,15 +12,26 @@ from app.services.codex_exec_runner import run_codex_exec
 
 NullLogSink = lambda _level, _message: None
 SkinRunner = Callable[[str], str]
-SKIN_PROMPT_ATTACHMENT_SOURCE = r"J:\workspaces\test\test.md"
+
+
+@dataclass(frozen=True, slots=True)
+class SkinGenerationResult:
+    path: Path
+    font_id: int
+    voice_id: int
+    raw_response: str = ""
+    prompt: str = ""
+
+
 SKIN_PROMPT_ATTACHMENT_MARKDOWN = r"""
 # スキン生成依頼
 次の情報をもとに、このリスナーさんのイメージに合うフォントとボイスを選び、
-さらにリスナーさんの特徴を反映させたスキンを生成してください。
+さらにリスナーさんの特徴を反映させた背景画像を生成してください。
 最終的な出力は、必ず次の形式の1行だけです。
 
-表示名は、コメント欄で自然に見える短い名前にしてください。
-スキンは、本人のアイコン画像とコメント傾向に合う 512x32 の背景として作ってください。
+背景画像は、本人のアイコン画像とコメント傾向に合う 1000x60 の背景として作ってください。
+image-gen2の性能を最大まで活かした、細かく緻密に描かれた最高の背景画像を作ってください。
+そしてあなたのセンスは最高に抜群なので、アーティストになった気分で思いっきり素敵な画像になるように思いながら描いてください。
 フォントとボイスは、候補一覧の中から人物像に一番合うものを選んでください。
 
 ## 本人情報
@@ -30,7 +42,8 @@ SKIN_PROMPT_ATTACHMENT_MARKDOWN = r"""
 {{persona_summary}}
 
 ## スキン生成に関する指示
-保存先は入力JSONの `output_path` です。
+保存先は次のパスです。
+{{output_path}}
 必ずそのパスに PNG として保存してください。
 
 ## フォントとボイスの選定
@@ -102,16 +115,14 @@ SKIN_PROMPT_ATTACHMENT_MARKDOWN = r"""
 | F18 | Zen Kurenaido | 細く丸い手書き。柔らかく、主張は控えめ。 | 優しい、静か、女性的、穏やか |
 | F19 | Yusei Magic | マーカー手書き風。太さは中程度で会話文に使いやすい。 | 親しみ、手書き感、日常会話、自然体 |
 
+##　返答json
 返答は次のJSONだけにしてください。
 
 {
   "ok": true,
   "path": "保存したPNGファイルの絶対パス",
-  "width": 512,
-  "height": 32,
   "font_id": 0,
-  "voice_id": 0,
-  "notes": "短い説明"
+  "voice_id": 0
 }""".strip()
 
 
@@ -121,9 +132,6 @@ def render_auto_profile_skin(
     *,
     skin_spec: Any = None,
     icon_path: str = "",
-    icon_summary: dict[str, Any] | None = None,
-    font_options: Any = (),
-    voice_options: Any = (),
     workdir: Path | None = None,
     model: str = "",
     effort: str = "",
@@ -131,15 +139,12 @@ def render_auto_profile_skin(
     runner: SkinRunner | None = None,
     evidence_path: Path | None = None,
     log: LogSink = NullLogSink,
-) -> Path:
+) -> SkinGenerationResult:
     return create_auto_profile_skin_with_codex(
         plan,
         output_path,
         skin_spec=skin_spec,
         icon_path=icon_path,
-        icon_summary=icon_summary,
-        font_options=font_options,
-        voice_options=voice_options,
         workdir=workdir,
         model=model,
         effort=effort,
@@ -156,9 +161,6 @@ def create_auto_profile_skin_with_codex(
     *,
     skin_spec: Any = None,
     icon_path: str = "",
-    icon_summary: dict[str, Any] | None = None,
-    font_options: Any = (),
-    voice_options: Any = (),
     workdir: Path | None = None,
     model: str = "",
     effort: str = "",
@@ -166,7 +168,7 @@ def create_auto_profile_skin_with_codex(
     runner: SkinRunner | None = None,
     evidence_path: Path | None = None,
     log: LogSink = NullLogSink,
-) -> Path:
+) -> SkinGenerationResult:
     width = int(getattr(skin_spec, "width", 512) or 512)
     height = int(getattr(skin_spec, "height", 32) or 32)
     output_path = Path(output_path)
@@ -177,9 +179,6 @@ def create_auto_profile_skin_with_codex(
         width=width,
         height=height,
         icon_path=icon_path,
-        icon_summary=icon_summary or {},
-        font_options=font_options,
-        voice_options=voice_options,
     )
     log_execution(log, "CodexスキンPNG生成", level="INFO", path=output_path, width=width, height=height)
     command: list[str] = []
@@ -197,10 +196,22 @@ def create_auto_profile_skin_with_codex(
             detail = result.stderr.strip() or f"returncode={result.returncode}"
             raise RuntimeError(f"skin generation Codex failed: {detail}")
         text = result.text
+    generation_result = parse_skin_generation_response(text, expected_path=output_path)
+    original_path: Path | None = None
     actual_width, actual_height, mode = inspect_png(output_path)
     if (actual_width, actual_height) != (width, height):
-        log_error(log, "CodexスキンPNG寸法不一致", expected=f"{width}x{height}", actual=f"{actual_width}x{actual_height}")
-        raise ValueError(f"generated skin size must be {width}x{height}: {actual_width}x{actual_height}")
+        original_path = output_path.with_name(f"{output_path.stem}_original{output_path.suffix}")
+        shutil.copy2(output_path, original_path)
+        source_size = f"{actual_width}x{actual_height}"
+        actual_width, actual_height, mode = resize_png_to_exact(output_path, width=width, height=height)
+        log_result(
+            log,
+            "CodexスキンPNGリサイズ",
+            expected=f"{width}x{height}",
+            source=source_size,
+            actual=f"{actual_width}x{actual_height}",
+            original=original_path,
+        )
     if evidence_path is not None:
         save_codex_skin_evidence(
             evidence_path,
@@ -210,12 +221,19 @@ def create_auto_profile_skin_with_codex(
             prompt=prompt,
             response=text,
             output_path=output_path,
+            original_path=original_path,
             width=actual_width,
             height=actual_height,
             mode=mode,
         )
     log_result(log, "CodexスキンPNG生成", path=output_path, bytes=output_path.stat().st_size, mode=mode)
-    return output_path
+    return SkinGenerationResult(
+        path=output_path,
+        font_id=generation_result.font_id,
+        voice_id=generation_result.voice_id,
+        raw_response=text,
+        prompt=prompt,
+    )
 
 
 def build_codex_skin_prompt(
@@ -225,52 +243,13 @@ def build_codex_skin_prompt(
     width: int,
     height: int,
     icon_path: str,
-    icon_summary: dict[str, Any],
-    font_options: Any = (),
-    voice_options: Any = (),
 ) -> str:
-    payload = {
-        "output_path": str(output_path),
-        "width": width,
-        "height": height,
-        "display_name": getattr(plan, "display_name", ""),
-        "persona_summary": getattr(plan, "persona_summary", ""),
-        "skin_concept": getattr(plan, "skin_concept", ""),
-        "skin_prompt": getattr(plan, "skin_prompt", ""),
-        "palette": list(getattr(plan, "palette", ()) or ()),
-        "selected_font_id": getattr(plan, "font_id", ""),
-        "selected_voice_id": getattr(plan, "voice_id", ""),
-        "font_candidates": [object_to_public_dict(item) for item in font_options or ()],
-        "voice_candidates": [object_to_public_dict(item) for item in voice_options or ()],
-        "icon_path": str(icon_path or ""),
-        "icon_summary": icon_summary,
-    }
-    input_json = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
-    header = dedent(
-        """
-        依頼です。
-        入力JSONには、対象ユーザーのコメント傾向、表示名、スキンサイズ、ユーザーアイコンのパス、フォント候補、ボイス候補が入っています。
-        この情報をもとに、512x32 で細かくビッシリ詰め込んだスキンPNGを作成してください。
-        返答は次のJSONだけにしてください。
-        {
-          "ok": true,
-          "path": "生成したPNGファイルのパス",
-          "width": 512,
-          "height": 32,
-          "notes": "短い説明"
-        }
-        """
-    ).strip()
-    parts = [header]
     persona_summary = str(getattr(plan, "persona_summary", "") or "").strip()
-    attachment_markdown = (
+    return (
         SKIN_PROMPT_ATTACHMENT_MARKDOWN.replace("{{icon_path}}", str(icon_path or "").strip())
         .replace("{{persona_summary}}", persona_summary)
+        .replace("{{output_path}}", str(output_path))
     )
-    if attachment_markdown:
-        parts.extend([f"{SKIN_PROMPT_ATTACHMENT_SOURCE}:", attachment_markdown])
-    parts.extend(["入力JSON:", input_json])
-    return "\n\n".join(parts)
 
 
 def object_to_public_dict(value: Any) -> dict[str, Any]:
@@ -281,6 +260,48 @@ def object_to_public_dict(value: Any) -> dict[str, Any]:
         if hasattr(value, key):
             result[key] = getattr(value, key)
     return result
+
+
+def parse_skin_generation_response(text: str, *, expected_path: Path) -> SkinGenerationResult:
+    source = extract_json_object(text)
+    try:
+        payload = json.loads(source)
+    except json.JSONDecodeError as exc:
+        raise ValueError("skin generation response is not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("skin generation response JSON must be an object")
+    if payload.get("ok") is not True:
+        raise ValueError("skin generation response ok must be true")
+    response_path = Path(str(payload.get("path") or expected_path))
+    return SkinGenerationResult(
+        path=response_path,
+        font_id=required_int(payload.get("font_id"), "font_id"),
+        voice_id=required_int(payload.get("voice_id"), "voice_id"),
+        raw_response=text,
+    )
+
+
+def extract_json_object(text: str) -> str:
+    source = str(text or "").strip()
+    if source.startswith("```"):
+        lines = source.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        source = "\n".join(lines).strip()
+    start = source.find("{")
+    end = source.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError("skin generation response JSON object was not found")
+    return source[start : end + 1]
+
+
+def required_int(value: Any, label: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"skin generation response requires integer {label}") from exc
 
 
 def inspect_png(path: Path) -> tuple[int, int, str]:
@@ -294,6 +315,37 @@ def inspect_png(path: Path) -> tuple[int, int, str]:
         return image.size[0], image.size[1], image.mode
 
 
+def crop_png_center(path: Path, *, width: int, height: int) -> tuple[int, int, str]:
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise RuntimeError("Pillow is required to crop generated skins") from exc
+    with Image.open(path) as image:
+        source_width, source_height = image.size
+        if source_width < width or source_height < height:
+            raise ValueError(f"generated skin size must be at least {width}x{height}: {source_width}x{source_height}")
+        left = (source_width - width) // 2
+        top = (source_height - height) // 2
+        cropped = image.crop((left, top, left + width, top + height))
+        cropped.save(path)
+        return cropped.size[0], cropped.size[1], cropped.mode
+
+
+def resize_png_to_exact(path: Path, *, width: int, height: int) -> tuple[int, int, str]:
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise RuntimeError("Pillow is required to resize generated skins") from exc
+    with Image.open(path) as image:
+        resized = image.resize((width, height), Image.Resampling.LANCZOS)
+        resized.save(path)
+        return resized.size[0], resized.size[1], resized.mode
+
+
 def save_codex_skin_evidence(
     path: Path,
     *,
@@ -303,6 +355,7 @@ def save_codex_skin_evidence(
     prompt: str,
     response: str,
     output_path: Path,
+    original_path: Path | None = None,
     width: int,
     height: int,
     mode: str,
@@ -313,9 +366,12 @@ def save_codex_skin_evidence(
         "codex_returncode": returncode,
         "stderr_tail": stderr[-1000:],
         "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "prompt": prompt,
         "raw_ai_response": response,
         "raw_ai_response_sha256": hashlib.sha256(str(response or "").encode("utf-8")).hexdigest(),
         "png_path": str(output_path),
+        "original_png_path": str(original_path) if original_path is not None else "",
+        "original_png_exists": bool(original_path and original_path.is_file()),
         "png_exists": output_path.is_file(),
         "png_size": output_path.stat().st_size if output_path.is_file() else 0,
         "width": width,

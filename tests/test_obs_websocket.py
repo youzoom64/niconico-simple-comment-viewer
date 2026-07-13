@@ -30,6 +30,25 @@ def test_obs_config_roundtrip() -> None:
     assert data["obs_browser_url"] == "http://127.0.0.1:8792/list"
     assert data["obs_browser_width"] == 1280
     assert data["obs_browser_height"] == 720
-    assert len(data["obs_browser_sources"]) == 2
+    assert len(data["obs_browser_sources"]) == 3
     assert data["obs_browser_sources"][0]["source"] == "skin"
     assert data["obs_browser_sources"][1]["source"] == "リスト"
+    assert data["obs_browser_sources"][2] == {
+        "label": "リアルタイム字幕",
+        "source": "字幕",
+        "url": "http://127.0.0.1:8788/overlay",
+        "width": 1920,
+        "height": 1080,
+    }
+
+
+def test_existing_caption_source_is_not_duplicated() -> None:
+    config = AppConfig.from_dict(
+        {
+            "obs_browser_sources": [
+                {"label": "字幕カスタム", "source": "字幕", "url": "http://127.0.0.1:8788/overlay?x=1"},
+            ]
+        }
+    )
+    assert [row["source"] for row in config.obs_browser_sources] == ["字幕"]
+    assert config.obs_browser_sources[0]["url"].endswith("?x=1")

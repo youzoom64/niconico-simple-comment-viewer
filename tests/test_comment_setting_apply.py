@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import unittest
 
-from app.db.repositories.profiles import get_live_user_profile, upsert_live_user_profile
+from app.db.repositories.profiles import get_live_user_profile, list_live_user_profile_skins, upsert_live_user_profile
 from app.db.schema import initialize_database
 from app.profiles.comment_setting_apply import apply_comment_setting_command_to_profile
 
@@ -46,6 +46,11 @@ class CommentSettingApplyTests(unittest.TestCase):
         self.assertEqual(24, profile["font_size"])
         self.assertEqual("#ffeeaa", profile["font_color"])
         self.assertEqual("127", profile["voicevox_style"])
+        skins = list_live_user_profile_skins(conn, "1234")
+        self.assertEqual(1, len(skins))
+        self.assertEqual("https://raw.githubusercontent.com/youzoom64/kiritorikun-skin-assets/main/skins/45.png", skins[0]["skin_path"])
+        self.assertEqual(512, skins[0]["skin_width"])
+        self.assertEqual(32, skins[0]["skin_height"])
 
     def test_name_only_command_preserves_existing_settings(self) -> None:
         conn = self.make_conn()
@@ -81,6 +86,33 @@ class CommentSettingApplyTests(unittest.TestCase):
         self.assertEqual("skin.png", profile["skin_path"])
         self.assertEqual("Reggae One", profile["font_family"])
         self.assertEqual("9", profile["voicevox_style"])
+        skins = list_live_user_profile_skins(conn, "1234")
+        self.assertEqual(["skin.png"], [row["skin_path"] for row in skins])
+
+    def test_profile_save_keeps_up_to_ten_clothing_skins(self) -> None:
+        conn = self.make_conn()
+        for index in range(1, 12):
+            upsert_live_user_profile(
+                conn,
+                {
+                    "enabled": True,
+                    "user_id": "1234",
+                    "display_name": "",
+                    "skin_path": f"skin-{index}.png",
+                    "skin_width": 512,
+                    "skin_height": 32,
+                    "font_family": "",
+                    "font_size": 20,
+                    "font_color": "#ffffff",
+                    "voicevox_speaker": "",
+                    "voicevox_style": "",
+                },
+            )
+
+        skins = list_live_user_profile_skins(conn, "1234")
+        self.assertEqual(10, len(skins))
+        self.assertNotIn("skin-1.png", [row["skin_path"] for row in skins])
+        self.assertIn("skin-11.png", [row["skin_path"] for row in skins])
 
     def test_setting_only_command_can_update_hashed_user(self) -> None:
         conn = self.make_conn()

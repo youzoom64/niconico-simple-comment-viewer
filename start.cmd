@@ -27,11 +27,18 @@ if not defined PYTHON_EXE (
 
 if /i "%~1"=="--wait" (
   shift /1
+  call "J:\tools\scripts\rtfw_lan_client\start_service.cmd"
+  if errorlevel 1 (
+    echo ERROR: RTFW LAN Client could not be started.
+    endlocal & exit /b 1
+  )
+  call "%~dp0start_intervention_api.cmd"
   "%PYTHON_EXE%" main.py --entrypoint gui %*
   set "EXIT_CODE=%ERRORLEVEL%"
+  call "%~dp0stop_intervention_api.cmd"
   endlocal & exit /b %EXIT_CODE%
 )
 
-start "" "%PYTHONW_EXE%" "%~dp0main.py" --entrypoint gui %*
+start "Niconico Simple Comment Viewer" /min cmd /c ""%~f0" --wait %*"
 set "EXIT_CODE=%ERRORLEVEL%"
 endlocal & exit /b %EXIT_CODE%

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from app.main.adapters import run_gui_entrypoint
+from app.main.adapters import run_api_entrypoint, run_gui_entrypoint
 
 EntrypointRunner = Callable[[Sequence[str]], int]
 
@@ -24,6 +24,12 @@ APP_ENTRYPOINTS: dict[str, Entrypoint] = {
         description="PyQt GUI for NDGR comment viewing",
         runner=run_gui_entrypoint,
         runtime_layer="app/gui",
+    ),
+    "api": Entrypoint(
+        name="api",
+        description="Local intervention API for comment lookup and bridge actions",
+        runner=run_api_entrypoint,
+        runtime_layer="app/api",
     ),
 }
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -58,8 +58,25 @@ def create_schema(conn: sqlite3.Connection) -> None:
             font_color TEXT,
             voicevox_speaker TEXT,
             voicevox_style TEXT,
+            icon_path TEXT,
+            icon_source TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS live_user_profile_skins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            slot INTEGER NOT NULL,
+            skin_path TEXT NOT NULL,
+            skin_width INTEGER,
+            skin_height INTEGER,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            source TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, slot),
+            UNIQUE(user_id, skin_path)
         );
 
         CREATE TABLE IF NOT EXISTS event_kind_presets (
@@ -117,6 +134,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_raw_events_lv_kind ON raw_events(lv, event_kind);
         CREATE INDEX IF NOT EXISTS idx_normalized_events_lv_kind ON normalized_events(lv, event_kind);
         CREATE INDEX IF NOT EXISTS idx_normalized_events_user_id ON normalized_events(user_id);
+        CREATE INDEX IF NOT EXISTS idx_live_user_profile_skins_user_id
+            ON live_user_profile_skins(user_id, slot);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_normalized_events_raw_event_id
             ON normalized_events(raw_event_id)
             WHERE raw_event_id IS NOT NULL;
@@ -135,6 +154,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
         (str(SCHEMA_VERSION),),
     )
     ensure_live_user_profile_columns(conn)
+    ensure_live_user_profile_skin_table(conn)
+    backfill_live_user_profile_skins(conn)
     ensure_event_kind_preset_columns(conn)
     ensure_broadcast_history_columns(conn)
 
@@ -149,6 +170,128 @@ def ensure_live_user_profile_columns(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "live_user_profiles", "skin_width", "INTEGER")
     ensure_column(conn, "live_user_profiles", "skin_height", "INTEGER")
     ensure_column(conn, "live_user_profiles", "display_name_locked", "INTEGER NOT NULL DEFAULT 0")
+    ensure_column(conn, "live_user_profiles", "icon_path", "TEXT")
+    ensure_column(conn, "live_user_profiles", "icon_source", "TEXT")
+
+
+def ensure_live_user_profile_skin_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS live_user_profile_skins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            slot INTEGER NOT NULL,
+            skin_path TEXT NOT NULL,
+            skin_width INTEGER,
+            skin_height INTEGER,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            source TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, slot),
+            UNIQUE(user_id, skin_path)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_live_user_profile_skins_user_id
+            ON live_user_profile_skins(user_id, slot)
+        """
+    )
+
+
+def backfill_live_user_profile_skins(conn: sqlite3.Connection) -> None:
+    rows = conn.execute(
+        """
+        SELECT user_id, skin_path, skin_width, skin_height
+        FROM live_user_profiles
+        WHERE COALESCE(user_id, '') != ''
+          AND COALESCE(skin_path, '') != ''
+        """
+    ).fetchall()
+    for row in rows:
+        register_live_user_profile_skin(
+            conn,
+            str(row["user_id"] or row[0]),
+            str(row["skin_path"] or row[1]),
+            skin_width=row["skin_width"] if "skin_width" in row.keys() else row[2],
+            skin_height=row["skin_height"] if "skin_height" in row.keys() else row[3],
+            source="backfill",
+        )
+
+
+def register_live_user_profile_skin(
+    conn: sqlite3.Connection,
+    user_id: str,
+    skin_path: str,
+    *,
+    skin_width: int | None = None,
+    skin_height: int | None = None,
+    source: str = "",
+) -> None:
+    user_id = str(user_id or "").strip()
+    skin_path = str(skin_path or "").strip()
+    if not user_id or not skin_path:
+        return
+    existing = conn.execute(
+        """
+        SELECT id
+        FROM live_user_profile_skins
+        WHERE user_id = ? AND skin_path = ?
+        """,
+        (user_id, skin_path),
+    ).fetchone()
+    if existing:
+        conn.execute(
+            """
+            UPDATE live_user_profile_skins
+            SET skin_width = COALESCE(?, skin_width),
+                skin_height = COALESCE(?, skin_height),
+                enabled = 1,
+                source = COALESCE(NULLIF(?, ''), source),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND skin_path = ?
+            """,
+            (skin_width, skin_height, source, user_id, skin_path),
+        )
+        return
+    rows = conn.execute(
+        """
+        SELECT slot
+        FROM live_user_profile_skins
+        WHERE user_id = ?
+        ORDER BY slot
+        """,
+        (user_id,),
+    ).fetchall()
+    used_slots = {int(row["slot"] if hasattr(row, "keys") else row[0]) for row in rows}
+    free_slot = next((slot for slot in range(1, 11) if slot not in used_slots), 0)
+    if free_slot == 0:
+        oldest = conn.execute(
+            """
+            SELECT slot
+            FROM live_user_profile_skins
+            WHERE user_id = ?
+            ORDER BY updated_at, id
+            LIMIT 1
+            """,
+            (user_id,),
+        ).fetchone()
+        free_slot = int(oldest["slot"] if hasattr(oldest, "keys") else oldest[0])
+        conn.execute(
+            "DELETE FROM live_user_profile_skins WHERE user_id = ? AND slot = ?",
+            (user_id, free_slot),
+        )
+    conn.execute(
+        """
+        INSERT INTO live_user_profile_skins(
+            user_id, slot, skin_path, skin_width, skin_height, enabled, source
+        )
+        VALUES(?, ?, ?, ?, ?, 1, ?)
+        """,
+        (user_id, free_slot, skin_path, skin_width, skin_height, source),
+    )
 
 
 def ensure_event_kind_preset_columns(conn: sqlite3.Connection) -> None:

@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import json
 import re
 import shutil
 import sqlite3
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import quote
 
-from app.core.logging import LogSink, log_branch, log_error, log_execution, log_result
+from app.core.logging import LogSink, log_branch, log_execution, log_result
 from app.db.connection import database_session
 from app.db.repositories.events import list_listener_events
 from app.db.schema import initialize_database
@@ -20,10 +19,9 @@ from app.profiles.comment_setting_apply import CommentSettingApplyResult, apply_
 from app.profiles.comment_setting_command import KIRITORIKUN_FONTS
 from app.profiles.listener_identity import ListenerIdentity, resolve_listener_identity
 from app.services.auto_profile.icons import resolve_user_icon_reference
-from app.services.codex_exec_runner import run_codex_exec
+from app.services.codex_exec_runner import subprocess_no_window_kwargs
 
 NullLogSink = lambda _level, _message: None
-AiRunner = Callable[[str], str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,12 +59,6 @@ class AutoProfileContext:
 
 
 @dataclass(frozen=True, slots=True)
-class AutoProfileRequest:
-    payload: dict[str, Any]
-    prompt: str
-
-
-@dataclass(frozen=True, slots=True)
 class AutoProfilePlan:
     display_name: str
     persona_summary: str
@@ -76,12 +68,6 @@ class AutoProfilePlan:
     font_id: int
     voice_id: int
     reason: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class AutoProfileAiResult:
-    plan: AutoProfilePlan
-    raw_response: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,137 +169,6 @@ def collect_auto_profile_context_from_rows(
     )
 
 
-def build_auto_profile_ai_request(
-    context: AutoProfileContext,
-    *,
-    max_comments: int = 120,
-    persona_memo: dict[str, Any] | None = None,
-    log: LogSink = NullLogSink,
-) -> AutoProfileRequest:
-    memo = compact_persona_memo(persona_memo)
-    comments = () if memo else context.comments[: max(1, max_comments)]
-    payload = {
-        "task": "infer_listener_visual_voice_profile",
-        "constraints": {
-            "return_json_only": True,
-            "skin_width": context.skin_spec.width,
-            "skin_height": context.skin_spec.height,
-            "do_not_infer_sensitive_identity": True,
-            "command_format": "＠表示名{S<skin_id>,F<font_id>,V<voice_id>}",
-        },
-        "target": {
-            "identity_label": context.identity.label,
-            "display_name": context.display_name,
-            "row": context.target_row,
-            "persona_memo": memo,
-        },
-        "icon": {
-            "local_path": context.icon_path,
-            "exists": bool(context.icon_path),
-            "summary": context.icon_summary or {},
-            "instruction": "local_path の本人アイコン画像も参考にする。ただし画像から実在身元やセンシティブ属性を断定しない。",
-        },
-        "skin_spec": asdict(context.skin_spec),
-        "fonts": [asdict(font) for font in context.fonts],
-        "voices": [asdict(voice) for voice in context.voices],
-        "comments": list(comments),
-        "expected_json": {
-            "display_name": "string",
-            "persona_summary": "string",
-            "skin": {
-                "concept": "string",
-                "prompt": "string",
-                "palette": ["#000000", "#ffffff"],
-            },
-            "font": {"id": 0, "reason": "string"},
-            "voice": {"id": 0, "reason": "string"},
-            "reason": "string",
-        },
-    }
-    prompt = (
-        "次のJSONだけを読んで、本人の過去発言から演出設定をJSONだけで返してください。\n"
-        "個人の実在身元やセンシティブ属性は推測しないでください。\n"
-        "返すJSON内の説明文字列は日本語で書いてください。skin.prompt も日本語で書いてください。\n"
-        "icon.local_path がある場合は、その本人アイコン画像を色・雰囲気の参考にしてください。\n"
-        "target.persona_memo が空でない場合は、過去コメントの代わりにその人物メモを優先してください。\n"
-        "スキンは512x32のOBSコメント用で、中央の文字レーンを読みやすく残してください。\n\n"
-        + json.dumps(payload, ensure_ascii=False, indent=2, default=str)
-    )
-    log_result(log, "AI入力作成", comments=len(comments), persona_memo="yes" if memo else "no", fonts=len(context.fonts), voices=len(context.voices))
-    return AutoProfileRequest(payload=payload, prompt=prompt)
-
-
-def run_auto_profile_ai(
-    request: AutoProfileRequest,
-    *,
-    model: str = "",
-    effort: str = "",
-    timeout_seconds: int | None = None,
-    runner: AiRunner | None = None,
-    log: LogSink = NullLogSink,
-) -> AutoProfilePlan:
-    return run_auto_profile_ai_with_response(
-        request,
-        model=model,
-        effort=effort,
-        timeout_seconds=timeout_seconds,
-        runner=runner,
-        log=log,
-    ).plan
-
-
-def run_auto_profile_ai_with_response(
-    request: AutoProfileRequest,
-    *,
-    model: str = "",
-    effort: str = "",
-    timeout_seconds: int | None = None,
-    runner: AiRunner | None = None,
-    log: LogSink = NullLogSink,
-) -> AutoProfileAiResult:
-    log_execution(log, "AI自動演出判定", level="INFO", timeout=timeout_seconds, model=model or "default")
-    if runner is not None:
-        text = runner(request.prompt)
-    else:
-        result = run_codex_exec(request.prompt, timeout_seconds=timeout_seconds, model=model, effort=effort)
-        if not result.ok:
-            log_error(log, "AI自動演出判定失敗", code=result.returncode, stderr=result.stderr[-300:])
-            detail = result.stderr.strip() or f"returncode={result.returncode}"
-            raise RuntimeError(f"auto profile AI failed: {detail}")
-        text = result.text
-    plan = parse_auto_profile_ai_json(text, log=log)
-    log_result(log, "AI自動演出判定", font=plan.font_id, voice=plan.voice_id, display_name=plan.display_name or "-")
-    return AutoProfileAiResult(plan=plan, raw_response=text)
-
-
-def parse_auto_profile_ai_json(text: str, *, log: LogSink = NullLogSink) -> AutoProfilePlan:
-    source = extract_json_object(text)
-    try:
-        payload = json.loads(source)
-    except json.JSONDecodeError as exc:
-        log_error(log, "AI JSON解析失敗", error=str(exc))
-        raise ValueError("AI response is not valid JSON") from exc
-    if not isinstance(payload, dict):
-        raise ValueError("AI response JSON must be an object")
-
-    skin = payload.get("skin") if isinstance(payload.get("skin"), dict) else {}
-    font = payload.get("font") if isinstance(payload.get("font"), dict) else {}
-    voice = payload.get("voice") if isinstance(payload.get("voice"), dict) else {}
-    palette = skin.get("palette") if isinstance(skin.get("palette"), list) else []
-    plan = AutoProfilePlan(
-        display_name=safe_display_name(payload.get("display_name")),
-        persona_summary=str(payload.get("persona_summary") or "").strip(),
-        skin_concept=str(skin.get("concept") or "").strip(),
-        skin_prompt=str(skin.get("prompt") or skin.get("description") or "").strip(),
-        palette=tuple(str(item).strip() for item in palette if str(item).strip())[:6],
-        font_id=required_int(font.get("id"), "font.id"),
-        voice_id=required_int(voice.get("id"), "voice.id"),
-        reason=str(payload.get("reason") or font.get("reason") or voice.get("reason") or "").strip(),
-    )
-    log_result(log, "AI JSON解析", font=plan.font_id, voice=plan.voice_id)
-    return plan
-
-
 def upload_auto_profile_skin_to_git_repo(
     skin_path: Path,
     *,
@@ -328,6 +183,7 @@ def upload_auto_profile_skin_to_git_repo(
     if not skin_path.is_file():
         raise FileNotFoundError(skin_path)
     ensure_git_repo(repo_dir, repository, branch)
+    sync_git_branch(repo_dir, branch, log=log)
     skin_dir = repo_dir / skin_dir_name
     skin_dir.mkdir(parents=True, exist_ok=True)
     skin_id = next_numeric_skin_id(path.name for path in skin_dir.glob("*.png"))
@@ -338,7 +194,7 @@ def upload_auto_profile_skin_to_git_repo(
     if status.stdout.strip():
         run_command(["git", "commit", "-m", commit_message, "--", str(destination.relative_to(repo_dir))], cwd=repo_dir)
         log_execution(log, "スキンGitHub push", level="INFO", branch=branch, skin=destination.name)
-        run_command(["git", "push", "-u", "origin", branch], cwd=repo_dir)
+        push_git_branch_with_rebase_retry(repo_dir, branch, log=log)
     else:
         log_branch(log, "スキンGitHub変更なし", level="WARN", skin=destination.name)
     raw_url = f"{build_raw_github_base_url(repository, branch)}/{quote(skin_dir_name.strip('/'), safe='/')}/{destination.name}"
@@ -435,25 +291,6 @@ def row_value(row: Any, key: str) -> Any:
         return None
 
 
-def extract_json_object(text: str) -> str:
-    source = str(text or "").strip()
-    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", source, flags=re.DOTALL)
-    if fenced:
-        return fenced.group(1)
-    start = source.find("{")
-    end = source.rfind("}")
-    if start >= 0 and end > start:
-        return source[start : end + 1]
-    return source
-
-
-def required_int(value: Any, label: str) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{label} must be an integer") from exc
-
-
 def safe_display_name(value: Any) -> str:
     text = str(value or "").strip()
     return re.sub(r"[＠@{}]", "", text)[:40]
@@ -471,9 +308,74 @@ def ensure_git_repo(repo_dir: Path, repository: str, branch: str) -> None:
         run_command(["git", "remote", "set-url", "origin", remote_url], cwd=repo_dir)
 
 
+def sync_git_branch(repo_dir: Path, branch: str, *, log: LogSink = NullLogSink) -> None:
+    fetch = run_command(["git", "fetch", "origin", branch], cwd=repo_dir, check=False)
+    if fetch.returncode != 0:
+        detail = command_detail(fetch)
+        if "couldn't find remote ref" in detail or "could not find remote ref" in detail:
+            log_branch(log, "スキンGitHub remote branchなし", level="WARN", branch=branch)
+            return
+        raise command_failed(["git", "fetch", "origin", branch], fetch)
+
+    remote_ref = f"origin/{branch}"
+    if run_command(["git", "rev-parse", "--verify", "HEAD"], cwd=repo_dir, check=False).returncode != 0:
+        run_command(["git", "checkout", "-B", branch, remote_ref], cwd=repo_dir)
+        return
+
+    current = run_command(["git", "branch", "--show-current"], cwd=repo_dir, check=False)
+    if current.stdout.strip() != branch:
+        checkout = run_command(["git", "checkout", branch], cwd=repo_dir, check=False)
+        if checkout.returncode != 0:
+            run_command(["git", "checkout", "-B", branch], cwd=repo_dir)
+
+    rebase = run_command(["git", "rebase", "--autostash", remote_ref], cwd=repo_dir, check=False)
+    if rebase.returncode != 0:
+        run_command(["git", "rebase", "--abort"], cwd=repo_dir, check=False)
+        raise command_failed(["git", "rebase", "--autostash", remote_ref], rebase)
+    log_result(log, "スキンGitHub同期", branch=branch)
+
+
+def push_git_branch_with_rebase_retry(repo_dir: Path, branch: str, *, log: LogSink = NullLogSink, attempts: int = 2) -> None:
+    command = ["git", "push", "-u", "origin", branch]
+    last_result: subprocess.CompletedProcess[str] | None = None
+    for attempt in range(1, max(1, attempts) + 1):
+        result = run_command(command, cwd=repo_dir, check=False)
+        if result.returncode == 0:
+            if attempt > 1:
+                log_result(log, "スキンGitHub push retry成功", branch=branch, attempts=attempt)
+            return
+        last_result = result
+        detail = command_detail(result)
+        if attempt >= attempts or not is_push_rejected_for_remote_ahead(detail):
+            break
+        log_branch(log, "スキンGitHub push拒否。remote同期後に再試行", level="WARN", branch=branch, attempt=attempt)
+        sync_git_branch(repo_dir, branch, log=log)
+    raise command_failed(command, last_result)
+
+
+def is_push_rejected_for_remote_ahead(detail: str) -> bool:
+    text = detail.lower()
+    return (
+        "fetch first" in text
+        or "non-fast-forward" in text
+        or "rejected" in text and "failed to push some refs" in text
+    )
+
+
 def build_raw_github_base_url(repository: str, branch: str = "main") -> str:
     owner_repo = repository.strip().removeprefix("https://github.com/").removesuffix(".git").strip("/")
     return f"https://raw.githubusercontent.com/{owner_repo}/{quote(branch.strip(), safe='')}"
+
+
+def command_detail(result: subprocess.CompletedProcess[str] | None) -> str:
+    if result is None:
+        return ""
+    return (result.stderr or result.stdout or "").strip()
+
+
+def command_failed(command: list[str], result: subprocess.CompletedProcess[str] | None) -> RuntimeError:
+    detail = command_detail(result)
+    return RuntimeError(f"command failed: {' '.join(command)}\n{detail}")
 
 
 def run_command(command: list[str], *, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -487,8 +389,8 @@ def run_command(command: list[str], *, cwd: Path, check: bool = True) -> subproc
         errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        **subprocess_no_window_kwargs(),
     )
     if check and result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip()
-        raise RuntimeError(f"command failed: {' '.join(command)}\n{detail}")
+        raise command_failed(command, result)
     return result

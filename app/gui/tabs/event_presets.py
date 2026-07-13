@@ -1,30 +1,32 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QColorDialog,
     QComboBox,
-    QFileDialog,
-    QFormLayout,
     QHBoxLayout,
+    QMessageBox,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from app.audio.player import play_wave_file
+from app.core.paths import APP_PATHS
 from app.db.connection import database_session
 from app.db.repositories.presets import delete_event_kind_preset, list_event_kind_presets, upsert_event_kind_preset
 from app.db.schema import initialize_database
 from app.events.kinds import MESSAGE_KIND_FIELDS
 from app.gui.common.context_menu import install_table_copy_menu
-from app.gui.common.file_drop_line_edit import FileDropLineEdit
 from app.gui.common.font_combo import FontFamilyCombo
-from app.gui.common.github_skin_picker import select_github_skin
+from app.gui.common.github_skin_picker import SkinPreviewButton, select_github_skin
 from app.gui.common.scroll_guard import capture_scroll, restore_scroll
 from app.gui.common.table_state import configure_table_header, connect_persistent_table_state, restore_persistent_table_state
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
@@ -71,11 +73,13 @@ DEFAULT_EVENT_TEMPLATES = {
     "unknown": "{content}",
 }
 
-
 LEGACY_EVENT_TEMPLATES = {
     "gift": "【ギフト】{message}",
     "tag_updated": "【タグ更新】{message}",
 }
+
+FONT_SIZE_OPTIONS = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 44, 48, 56, 64, 72, 84, 96]
+TABLE_STATE_KEY = "event_presets_columns_v2"
 
 
 class EventPresetsTab(QWidget):
@@ -85,8 +89,6 @@ class EventPresetsTab(QWidget):
         ("sound_path", "音声ファイル"),
         ("display_template", "表示テンプレート"),
         ("skin_path", "スキン"),
-        ("skin_width", "スキン幅"),
-        ("skin_height", "スキン高"),
         ("font_family", "フォント"),
         ("font_size", "サイズ"),
         ("font_color", "色"),
@@ -96,51 +98,24 @@ class EventPresetsTab(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.rows: list[dict[str, Any]] = []
+        self.loading_table = False
         self.settings_store = JsonSettingsStore()
         self.ui_state_store = UiStateStore()
         self.app_config = self.settings_store.load_config()
-        self.kind_input = QComboBox()
-        self.kind_input.setEditable(True)
-        self.kind_input.addItems(self._event_kind_candidates())
-        self.enabled_input = QCheckBox("有効")
-        self.enabled_input.setChecked(True)
-        self.sound_path_input = FileDropLineEdit()
-        self.sound_path_input.setPlaceholderText("音声ファイルをドロップ、または参照")
-        self.sound_browse_button = QPushButton("参照")
-        self.template_input = QTextEdit()
-        self.template_input.setPlaceholderText("例: 【広告】{message} / 【ギフト】{advertiser_name}さん {item_name} {point}pt")
-        self.template_input.setFixedHeight(88)
-        self.skin_path_input = FileDropLineEdit()
-        self.skin_path_input.setPlaceholderText("GitHubスキンを選択、またはローカル画像をドロップ")
-        self.skin_github_button = QPushButton("GitHub")
-        self.skin_browse_button = QPushButton("ローカル")
-        self.skin_width_input = QSpinBox()
-        self.skin_width_input.setRange(0, 4096)
-        self.skin_width_input.setSpecialValueText("基本")
-        self.skin_height_input = QSpinBox()
-        self.skin_height_input.setRange(0, 512)
-        self.skin_height_input.setSpecialValueText("基本")
-        self.font_family_input = FontFamilyCombo()
-        self.font_size_input = QSpinBox()
-        self.font_size_input.setRange(0, 128)
-        self.font_size_input.setSpecialValueText("基本")
-        self.font_color_input = FileDropLineEdit()
-        self.font_color_input.setPlaceholderText("例: #ffffff / 空なら基本")
-        self.voicevox_style_input = VoicevoxStyleCombo()
-        self.voicevox_reload_button = QPushButton("話者再読込")
-        self.save_button = QPushButton("保存")
-        self.delete_button = QPushButton("削除")
+        self.voicevox_style_source = VoicevoxStyleCombo()
         self.seed_all_button = QPushButton("全イベント初期設定")
+        self.delete_button = QPushButton("選択行を削除")
         self.reload_button = QPushButton("再読込")
+        self.voicevox_reload_button = QPushButton("VOICEVOX再読込")
         self.table = QTableWidget(0, len(self.columns))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
-        configure_table_header(self.table, [170, 70, 260, 420, 240, 80, 80, 150, 70, 90, 170])
-        restore_persistent_table_state(self.table, self.ui_state_store, "event_presets")
-        connect_persistent_table_state(self.table, self.ui_state_store, "event_presets")
+        configure_table_header(self.table, [170, 70, 330, 420, 540, 170, 90, 130, 190])
+        restore_persistent_table_state(self.table, self.ui_state_store, TABLE_STATE_KEY)
+        connect_persistent_table_state(self.table, self.ui_state_store, TABLE_STATE_KEY)
         install_table_copy_menu(self.table, self.row_data_for_menu)
         self._build_layout()
         self._connect()
-        self.reload_voicevox_styles()
+        self.reload_voicevox_styles(reload_table=False)
         self.reload()
 
     def _event_kind_candidates(self) -> list[str]:
@@ -153,108 +128,39 @@ class EventPresetsTab(QWidget):
         return result
 
     def _build_layout(self) -> None:
-        form = QFormLayout()
-        form.addRow("イベント種類", self.kind_input)
-        form.addRow("", self.enabled_input)
-        sound_row = QHBoxLayout()
-        sound_row.addWidget(self.sound_path_input, 1)
-        sound_row.addWidget(self.sound_browse_button)
-        form.addRow("音声ファイル", sound_row)
-        form.addRow("表示テンプレート", self.template_input)
-        skin_row = QHBoxLayout()
-        skin_row.addWidget(self.skin_path_input, 1)
-        skin_row.addWidget(self.skin_github_button)
-        skin_row.addWidget(self.skin_browse_button)
-        form.addRow("スキン", skin_row)
-        form.addRow("スキン幅", self.skin_width_input)
-        form.addRow("スキン高さ", self.skin_height_input)
-        form.addRow("フォント", self.font_family_input)
-        form.addRow("フォントサイズ", self.font_size_input)
-        form.addRow("フォント色", self.font_color_input)
-        voice_row = QHBoxLayout()
-        voice_row.addWidget(self.voicevox_style_input, 1)
-        voice_row.addWidget(self.voicevox_reload_button)
-        form.addRow("VOICEVOX話者", voice_row)
         buttons = QHBoxLayout()
-        buttons.addWidget(self.save_button)
-        buttons.addWidget(self.delete_button)
         buttons.addWidget(self.seed_all_button)
+        buttons.addWidget(self.delete_button)
         buttons.addWidget(self.reload_button)
+        buttons.addWidget(self.voicevox_reload_button)
         buttons.addStretch(1)
         layout = QVBoxLayout()
-        layout.addLayout(form)
         layout.addLayout(buttons)
         layout.addWidget(self.table, 1)
         self.setLayout(layout)
 
     def _connect(self) -> None:
-        self.save_button.clicked.connect(self.save_preset)
-        self.delete_button.clicked.connect(self.delete_preset)
         self.seed_all_button.clicked.connect(self.seed_all_presets)
+        self.delete_button.clicked.connect(self.delete_selected_preset)
         self.reload_button.clicked.connect(self.reload)
-        self.sound_browse_button.clicked.connect(self.browse_sound)
-        self.skin_github_button.clicked.connect(self.select_github_skin)
-        self.skin_browse_button.clicked.connect(self.browse_skin)
         self.voicevox_reload_button.clicked.connect(self.reload_voicevox_styles)
-        self.table.cellDoubleClicked.connect(lambda row, _column: self.load_row_to_form(row))
+        self.table.itemChanged.connect(self.save_item_from_table)
 
-    def browse_sound(self) -> None:
-        path, _filter = QFileDialog.getOpenFileName(self, "音声ファイルを選択", "", "Audio (*.wav *.mp3 *.ogg);;All Files (*)")
-        if path:
-            self.sound_path_input.setText(path)
-
-    def browse_skin(self) -> None:
-        path, _filter = QFileDialog.getOpenFileName(self, "スキン画像を選択", "", "Images (*.png *.jpg *.jpeg *.webp);;All Files (*)")
-        if path:
-            self.skin_path_input.setText(path)
-
-    def select_github_skin(self) -> None:
-        skin_url = select_github_skin(self.skin_path_input.text().strip(), self)
-        if skin_url:
-            self.skin_path_input.setText(skin_url)
-
-    def reload_voicevox_styles(self) -> None:
+    def reload_voicevox_styles(self, reload_table: bool = True) -> None:
         self.app_config = self.settings_store.load_config()
+        current = self.voicevox_style_source.current_style_id()
         try:
-            self.voicevox_style_input.reload_from_engine(
+            self.voicevox_style_source.reload_from_engine(
                 self.app_config.voicevox_base_url,
                 self.app_config.voicevox_timeout_seconds,
-                self.voicevox_style_input.current_style_id(),
+                current,
             )
         except Exception:
-            self.voicevox_style_input.add_fallback_items()
-            self.voicevox_style_input.set_current_style_id("")
-
-    def save_preset(self) -> None:
-        preset = {
-            "event_kind": self.kind_input.currentText().strip(),
-            "enabled": self.enabled_input.isChecked(),
-            "sound_path": self.sound_path_input.text().strip(),
-            "display_template": self.template_input.toPlainText().strip(),
-            "skin_path": self.skin_path_input.text().strip(),
-            "skin_width": self.skin_width_input.value(),
-            "skin_height": self.skin_height_input.value(),
-            "font_family": self.font_family_input.current_font_family(),
-            "font_size": self.font_size_input.value(),
-            "font_color": self.font_color_input.text().strip(),
-            "voicevox_speaker": "",
-            "voicevox_style": self.voicevox_style_input.current_style_id(),
-        }
-        if not preset["event_kind"]:
-            return
-        with database_session() as conn:
-            initialize_database(conn)
-            upsert_event_kind_preset(conn, preset)
-        self.reload()
-
-    def delete_preset(self) -> None:
-        event_kind = self.kind_input.currentText().strip()
-        if not event_kind:
-            return
-        with database_session() as conn:
-            initialize_database(conn)
-            delete_event_kind_preset(conn, event_kind)
-        self.reload()
+            self.voicevox_style_source.add_fallback_items()
+            self.voicevox_style_source.set_current_style_id("")
+        self._set_voicevox_basic_label(self.voicevox_style_source)
+        if reload_table:
+            self.reload()
 
     def seed_all_presets(self) -> None:
         with database_session() as conn:
@@ -279,61 +185,244 @@ class EventPresetsTab(QWidget):
                 )
         self.reload()
 
-    def reload(self) -> None:
-        scroll_state = capture_scroll(self.table)
+    def delete_selected_preset(self) -> None:
+        row = self.current_row_data()
+        if not row:
+            return
+        event_kind = str(row.get("event_kind") or "")
+        if not event_kind:
+            return
         with database_session() as conn:
             initialize_database(conn)
-            self.migrate_legacy_templates(conn)
-            self.rows = [dict(row) for row in list_event_kind_presets(conn)]
-        self.table.setRowCount(len(self.rows))
-        for row_index, row in enumerate(self.rows):
-            for column_index, (key, _label) in enumerate(self.columns):
-                if key == "enabled":
-                    self.table.setItem(row_index, column_index, QTableWidgetItem(""))
-                    self.table.setCellWidget(row_index, column_index, self._enabled_checkbox(row_index, row))
-                    continue
-                value = row.get(key, "")
-                self.table.setItem(row_index, column_index, QTableWidgetItem(str(value or "")))
+            delete_event_kind_preset(conn, event_kind)
+        self.reload()
+
+    def reload(self) -> None:
+        scroll_state = capture_scroll(self.table)
+        self.loading_table = True
+        try:
+            with database_session() as conn:
+                initialize_database(conn)
+                self.migrate_legacy_templates(conn)
+                self.rows = [dict(row) for row in list_event_kind_presets(conn)]
+            self.table.setRowCount(len(self.rows))
+            for row_index, row in enumerate(self.rows):
+                self.table.setRowHeight(row_index, 42)
+                for column_index, (key, _label) in enumerate(self.columns):
+                    self.table.removeCellWidget(row_index, column_index)
+                    if key == "enabled":
+                        self.table.setItem(row_index, column_index, QTableWidgetItem(""))
+                        self.table.setCellWidget(row_index, column_index, self._enabled_checkbox(row_index, row))
+                    elif key == "sound_path":
+                        self.table.setItem(row_index, column_index, QTableWidgetItem(""))
+                        self.table.setCellWidget(row_index, column_index, self._sound_widget(row_index, row))
+                    elif key == "skin_path":
+                        self.table.setItem(row_index, column_index, QTableWidgetItem(""))
+                        self.table.setCellWidget(row_index, column_index, self._skin_widget(row_index, row))
+                    elif key == "font_family":
+                        self.table.setItem(row_index, column_index, QTableWidgetItem(""))
+                        self.table.setCellWidget(row_index, column_index, self._font_combo(row_index, row))
+                    elif key == "font_size":
+                        self.table.setItem(row_index, column_index, QTableWidgetItem(""))
+                        self.table.setCellWidget(row_index, column_index, self._font_size_combo(row_index, row))
+                    elif key == "font_color":
+                        self.table.setItem(row_index, column_index, QTableWidgetItem(""))
+                        self.table.setCellWidget(row_index, column_index, self._color_widget(row_index, row))
+                    elif key == "voicevox_style":
+                        self.table.setItem(row_index, column_index, QTableWidgetItem(""))
+                        self.table.setCellWidget(row_index, column_index, self._voicevox_combo(row_index, row))
+                    else:
+                        item = QTableWidgetItem(str(row.get(key) or ""))
+                        if key != "display_template":
+                            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                        self.table.setItem(row_index, column_index, item)
+        finally:
+            self.loading_table = False
         restore_scroll(self.table, scroll_state, keep_bottom=False)
 
     def _enabled_checkbox(self, row_index: int, row: dict[str, Any]) -> QCheckBox:
         checkbox = QCheckBox()
         checkbox.setChecked(bool(row.get("enabled")))
         checkbox.setToolTip("このイベント設定を有効にする")
-        checkbox.stateChanged.connect(lambda _state, index=row_index: self.save_enabled_from_table(index))
+        checkbox.stateChanged.connect(lambda _state, index=row_index: self.save_field(index, "enabled", checkbox.isChecked()))
         return checkbox
 
-    def save_enabled_from_table(self, row_index: int) -> None:
+    def _sound_widget(self, row_index: int, row: dict[str, Any]) -> QWidget:
+        combo = QComboBox()
+        combo.addItem("未設定", "")
+        current = str(row.get("sound_path") or "")
+        for label, value in self.sound_options(current):
+            combo.addItem(label, value)
+        self.set_combo_data(combo, current)
+        play_button = QPushButton("再生")
+        play_button.setEnabled(bool(current))
+        combo.currentIndexChanged.connect(
+            lambda _index, i=row_index, c=combo, b=play_button: self.save_sound_from_combo(i, c, b)
+        )
+        play_button.clicked.connect(lambda _checked=False, i=row_index: self.test_sound(i))
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(combo, 1)
+        layout.addWidget(play_button)
+        return widget
+
+    def _skin_widget(self, row_index: int, row: dict[str, Any]) -> QWidget:
+        current = str(row.get("skin_path") or "")
+        pick_button = SkinPreviewButton(current, "基本スキン")
+        pick_button.clicked.connect(lambda _checked=False, i=row_index: self.select_skin_for_row(i))
+        clear_button = QPushButton("基本")
+        clear_button.setFixedWidth(58)
+        clear_button.clicked.connect(lambda _checked=False, i=row_index: self.save_field_and_reload(i, "skin_path", ""))
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(pick_button, 1)
+        layout.addWidget(clear_button)
+        return widget
+
+    def _font_combo(self, row_index: int, row: dict[str, Any]) -> FontFamilyCombo:
+        combo = FontFamilyCombo()
+        combo.set_current_font_family(normalize_basic_label(row.get("font_family")))
+        combo.currentIndexChanged.connect(lambda _index, i=row_index, c=combo: self.save_field(i, "font_family", c.current_font_family()))
+        if combo.lineEdit() is not None:
+            combo.lineEdit().editingFinished.connect(lambda i=row_index, c=combo: self.save_field(i, "font_family", c.current_font_family()))
+        return combo
+
+    def _font_size_combo(self, row_index: int, row: dict[str, Any]) -> QComboBox:
+        combo = QComboBox()
+        combo.addItem("基本", "")
+        for size in FONT_SIZE_OPTIONS:
+            combo.addItem(str(size), size)
+        self.set_combo_data(combo, int(row.get("font_size") or 0) or "")
+        combo.currentIndexChanged.connect(lambda _index, i=row_index, c=combo: self.save_field(i, "font_size", c.currentData() or 0))
+        return combo
+
+    def _color_widget(self, row_index: int, row: dict[str, Any]) -> QWidget:
+        color = normalize_basic_label(row.get("font_color"))
+        pick_button = QPushButton(color or "基本色")
+        if color:
+            pick_button.setStyleSheet(f"background-color: {color};")
+        pick_button.clicked.connect(lambda _checked=False, i=row_index: self.select_color_for_row(i))
+        clear_button = QPushButton("基本")
+        clear_button.clicked.connect(lambda _checked=False, i=row_index: self.save_field_and_reload(i, "font_color", ""))
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(pick_button, 1)
+        layout.addWidget(clear_button)
+        return widget
+
+    def _voicevox_combo(self, row_index: int, row: dict[str, Any]) -> VoicevoxStyleCombo:
+        combo = VoicevoxStyleCombo()
+        self.copy_voicevox_items(combo)
+        combo.set_current_style_id(normalize_voicevox_value(row.get("voicevox_style")))
+        combo.currentIndexChanged.connect(lambda _index, i=row_index, c=combo: self.save_field(i, "voicevox_style", c.current_style_id()))
+        if combo.lineEdit() is not None:
+            combo.lineEdit().editingFinished.connect(lambda i=row_index, c=combo: self.save_field(i, "voicevox_style", c.current_style_id()))
+        return combo
+
+    def save_item_from_table(self, item: QTableWidgetItem) -> None:
+        if self.loading_table:
+            return
+        key = self.columns[item.column()][0]
+        if key == "display_template":
+            self.save_field(item.row(), key, item.text())
+
+    def save_field(self, row_index: int, key: str, value: Any) -> None:
+        if self.loading_table:
+            return
         row = self.row_data_for_menu(row_index)
         if not row:
             return
-        checkbox = self.table.cellWidget(row_index, 1)
-        if not isinstance(checkbox, QCheckBox):
-            return
-        preset = dict(row)
-        preset["enabled"] = checkbox.isChecked()
+        preset = self.normalized_preset(dict(row))
+        preset[key] = value
+        preset = self.normalized_preset(preset)
         with database_session() as conn:
             initialize_database(conn)
             upsert_event_kind_preset(conn, preset)
         self.rows[row_index] = preset
-        if self.kind_input.currentText().strip() == str(preset.get("event_kind") or ""):
-            self.enabled_input.setChecked(bool(preset.get("enabled")))
 
-    def load_row_to_form(self, row_index: int) -> None:
+    def save_field_and_reload(self, row_index: int, key: str, value: Any) -> None:
+        self.save_field(row_index, key, value)
+        self.reload()
+
+    def save_sound_from_combo(self, row_index: int, combo: QComboBox, play_button: QPushButton) -> None:
+        value = str(combo.currentData() or "")
+        play_button.setEnabled(bool(value))
+        self.save_field(row_index, "sound_path", value)
+
+    def normalized_preset(self, preset: dict[str, Any]) -> dict[str, Any]:
+        preset["font_family"] = normalize_basic_label(preset.get("font_family"))
+        preset["font_color"] = normalize_basic_label(preset.get("font_color"))
+        preset["voicevox_speaker"] = normalize_voicevox_value(preset.get("voicevox_speaker"))
+        preset["voicevox_style"] = normalize_voicevox_value(preset.get("voicevox_style"))
+        preset["skin_width"] = int(preset.get("skin_width") or 0)
+        preset["skin_height"] = int(preset.get("skin_height") or 0)
+        preset["font_size"] = int(preset.get("font_size") or 0)
+        return preset
+
+    def select_skin_for_row(self, row_index: int) -> None:
         row = self.row_data_for_menu(row_index)
         if not row:
             return
-        self.kind_input.setCurrentText(str(row.get("event_kind") or ""))
-        self.enabled_input.setChecked(bool(row.get("enabled")))
-        self.sound_path_input.setText(str(row.get("sound_path") or ""))
-        self.template_input.setPlainText(str(row.get("display_template") or ""))
-        self.skin_path_input.setText(str(row.get("skin_path") or ""))
-        self.skin_width_input.setValue(int(row.get("skin_width") or 0))
-        self.skin_height_input.setValue(int(row.get("skin_height") or 0))
-        self.font_family_input.set_current_font_family(str(row.get("font_family") or ""))
-        self.font_size_input.setValue(int(row.get("font_size") or 0))
-        self.font_color_input.setText(str(row.get("font_color") or ""))
-        self.voicevox_style_input.set_current_style_id(str(row.get("voicevox_style") or ""))
+        skin_url = select_github_skin(str(row.get("skin_path") or ""), self)
+        if skin_url:
+            self.save_field(row_index, "skin_path", skin_url)
+            self.reload()
+
+    def select_color_for_row(self, row_index: int) -> None:
+        row = self.row_data_for_menu(row_index)
+        if not row:
+            return
+        current = str(row.get("font_color") or self.app_config.font_color or "#ffffff")
+        color = QColorDialog.getColor(QColor(current), self, "フォント色")
+        if color.isValid():
+            self.save_field(row_index, "font_color", color.name())
+            self.reload()
+
+    def test_sound(self, row_index: int) -> None:
+        row = self.row_data_for_menu(row_index)
+        if not row:
+            return
+        sound_path = str(row.get("sound_path") or "")
+        if not sound_path:
+            return
+        try:
+            play_wave_file(resolve_app_path(sound_path), wait=False)
+        except Exception as exc:
+            QMessageBox.warning(self, "音声再生失敗", f"{type(exc).__name__}: {exc}")
+
+    def sound_options(self, current: str = "") -> list[tuple[str, str]]:
+        sound_dir = APP_PATHS.root / "sound"
+        options: list[tuple[str, str]] = []
+        if sound_dir.is_dir():
+            for path in sorted(sound_dir.glob("*.wav")):
+                value = path.relative_to(APP_PATHS.root).as_posix()
+                options.append((path.name, value))
+        if current and current not in {value for _label, value in options}:
+            options.insert(0, (short_path_label(current, current), current))
+        return options
+
+    def copy_voicevox_items(self, combo: VoicevoxStyleCombo) -> None:
+        combo.clear()
+        for index in range(self.voicevox_style_source.count()):
+            combo.addItem(self.voicevox_style_source.itemText(index), self.voicevox_style_source.itemData(index))
+        self._set_voicevox_basic_label(combo)
+
+    @staticmethod
+    def _set_voicevox_basic_label(combo: QComboBox) -> None:
+        if combo.count() > 0 and str(combo.itemData(0) or "") == "":
+            combo.setItemText(0, "基本VOICEVOX")
+
+    @staticmethod
+    def set_combo_data(combo: QComboBox, value: Any) -> None:
+        target = str(value or "")
+        for index in range(combo.count()):
+            if str(combo.itemData(index) or "") == target:
+                combo.setCurrentIndex(index)
+                return
+        combo.setCurrentIndex(0)
 
     @staticmethod
     def migrate_legacy_templates(conn) -> None:
@@ -351,7 +440,41 @@ class EventPresetsTab(QWidget):
             preset["display_template"] = new_template
             upsert_event_kind_preset(conn, preset)
 
+    def current_row_data(self) -> dict[str, Any] | None:
+        indexes = self.table.selectedIndexes()
+        if not indexes:
+            return None
+        return self.row_data_for_menu(indexes[0].row())
+
     def row_data_for_menu(self, row_index: int) -> dict[str, Any] | None:
         if row_index < 0 or row_index >= len(self.rows):
             return None
         return self.rows[row_index]
+
+
+def normalize_basic_label(value: Any) -> str:
+    text = str(value or "").strip()
+    if text in {"既定フォント", "基本", "基本色"}:
+        return ""
+    return text
+
+
+def normalize_voicevox_value(value: Any) -> str:
+    text = str(value or "").strip()
+    if text in {"読み上げなし", "基本VOICEVOX"}:
+        return ""
+    return text
+
+
+def short_path_label(value: str, empty: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return empty
+    return Path(text).name or text
+
+
+def resolve_app_path(value: str) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    return APP_PATHS.root / path

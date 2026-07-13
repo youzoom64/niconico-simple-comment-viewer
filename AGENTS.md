@@ -11,6 +11,19 @@
 - コミットメッセージは日本語にする。
 - すべての読み書きはUTF-8で扱う。
 
+## 介入API
+
+- 介入APIはコメビュ機能の一部。起動cmdが親として一緒に起動する。
+- 起動cmd上のGUIプロセス終了後に介入APIも停止する。
+- GUI起動: `J:\utility\Niconico\niconico-simple-comment-viewer\start.cmd`
+- API単体起動: `J:\utility\Niconico\niconico-simple-comment-viewer\start_intervention_api.cmd`
+- URL: `http://127.0.0.1:8793`
+- DB操作は直接SQLiteを書かず、原則このAPIを通す。
+- 疎通確認: `GET /health`
+- コメントNoから個人設定対象・過去コメント・本人アイコン確認: `GET /api/personal-settings/by-comment-no?no=551`
+- コメントNoから個人設定保存: `POST /api/personal-settings/apply-by-comment-no`
+- 監視アプリのスペシャルユーザー登録へ渡す: `POST /api/monitor/special-users/register-by-comment-no`
+
 ## この領域の責務
 
 `app/main/` はアプリ起動入口の配線層である。

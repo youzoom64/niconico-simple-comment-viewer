@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 
@@ -64,6 +65,7 @@ def run_codex_exec(
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
+            **subprocess_no_window_kwargs(),
         )
     except subprocess.TimeoutExpired as exc:
         stdout = text_from_timeout_stream(exc.stdout)
@@ -101,6 +103,18 @@ def command_path(name: str) -> str:
     if local.is_file():
         return str(local)
     return shutil.which(name) or name
+
+
+def subprocess_no_window_kwargs() -> dict[str, Any]:
+    if os.name != "nt":
+        return {}
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
+    startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+    return {
+        "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        "startupinfo": startupinfo,
+    }
 
 
 def normalize_timeout_seconds(value: int | float | None) -> int | None:

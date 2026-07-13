@@ -45,9 +45,9 @@ class VoicevoxStyleCombo(QComboBox):
 
     def current_style_id(self) -> str:
         data = self.currentData()
-        if data not in (None, ""):
-            return str(data)
         text = self.currentText().strip()
+        if data is not None and self.currentIndex() >= 0 and text == self.itemText(self.currentIndex()).strip():
+            return str(data or "")
         if ":" in text:
             head = text.split(":", 1)[0].strip()
             if head.isdigit():
@@ -67,6 +67,8 @@ class VoicevoxStyleCombo(QComboBox):
 
     def label_for_style_id(self, style_id: str) -> str:
         target = str(style_id or "").strip()
+        if target in {"読み上げなし", "基本VOICEVOX"}:
+            return ""
         if not target:
             return ""
         for index in range(self.count()):

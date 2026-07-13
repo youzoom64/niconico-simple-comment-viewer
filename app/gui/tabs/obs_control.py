@@ -15,6 +15,7 @@ from app.settings.store import JsonSettingsStore
 DEFAULT_OBS_ROWS = [
     {"label": "右から左スキン", "source": "skin", "url": "http://127.0.0.1:8792/"},
     {"label": "通常リスト", "source": "リスト", "url": "http://127.0.0.1:8792/list"},
+    {"label": "リアルタイム字幕", "source": "字幕", "url": "http://127.0.0.1:8788/overlay"},
 ]
 
 

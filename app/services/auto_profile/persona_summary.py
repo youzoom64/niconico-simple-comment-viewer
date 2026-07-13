@@ -14,7 +14,7 @@ from app.db.repositories.events import list_listener_events
 from app.db.schema import initialize_database
 from app.profiles.listener_identity import ListenerIdentity, resolve_listener_identity
 from app.services.auto_profile.results import auto_profile_result_key
-from app.services.auto_profile.workflow import compact_comment_text, display_name_from_row, extract_json_object, safe_display_name
+from app.services.auto_profile.workflow import compact_comment_text, display_name_from_row
 from app.services.codex_exec_runner import run_codex_exec
 
 PERSONA_MEMO_SCHEMA = "simple_comment_viewer/persona_memo/v1"
@@ -28,7 +28,6 @@ class PersonaSummaryRequest:
     identity: ListenerIdentity
     display_name: str
     comments: tuple[str, ...]
-    existing_summary: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,11 +126,8 @@ def execute_persona_summary_for_row(
             "comment_count": len(request.comments),
             "order": "newest_first",
         },
-        "display_name": plan.display_name or request.display_name,
+        "display_name": request.display_name,
         "persona_summary": plan.persona_summary,
-        "speech_style": plan.speech_style,
-        "tags": list(plan.tags),
-        "reason": plan.reason,
     }
     memo_path = save_persona_memo(request.identity, payload)
     log_result(log, "人物要約メモ保存", identity=request.identity.label, path=memo_path)
@@ -170,15 +166,12 @@ def collect_persona_summary_request(
         raise ValueError("persona summary target has no comment text")
 
     display_name = display_name_from_row(row)
-    existing_memo = load_persona_memo(identity) or {}
-    existing_summary = str(existing_memo.get("persona_summary") or "").strip()
     limit_label = "全件" if comment_limit is None else f"最新{max_rows}件"
-    log_result(log, "人物要約入力作成", comments=len(comments), existing="yes" if existing_summary else "no")
+    log_result(log, "人物要約入力作成", comments=len(comments))
     return build_persona_summary_request(
         identity=identity,
         display_name=display_name,
         comments=comments,
-        existing_summary=existing_summary,
         comment_limit_label=limit_label,
     )
 
@@ -188,41 +181,20 @@ def build_persona_summary_request(
     identity: ListenerIdentity,
     display_name: str,
     comments: tuple[str, ...],
-    existing_summary: str = "",
     comment_limit_label: str = "",
 ) -> PersonaSummaryRequest:
     comment_lines = "\n".join(f"- {normalize_comment_text(text)}" for text in comments if normalize_comment_text(text))
-    prompt = f"""TASK: summarize_listener_persona
-対象: {identity.label}
-表示名候補: {display_name or "-"}
-使用範囲: {comment_limit_label or "-"}
-
-既存メモ:
-{existing_summary or "なし"}
-
-コメント本文のみ。新しい順:
+    prompt = f"""次のコメント本文だけを読んで、このリスナーのコメント傾向を要約してください。
+返答は要約本文だけにしてください。
+JSON、見出し、箇条書きは使わないでください。
+コメント本文:
 {comment_lines}
-
-返答はJSONだけ:
-{{
-  "display_name": "表示名。分からなければ空文字",
-  "persona_summary": "人物像を1から2文で短く",
-  "speech_style": "口調や距離感を短く",
-  "tags": ["短い印象語を最大6個"],
-  "reason": "根拠を1文で短く"
-}}
-
-注意:
-- 実在身元、年齢、性別、職業、政治思想、健康状態などのセンシティブ属性は断定しない。
-- コメント本文から見える話し方と配信上の印象だけを要約する。
-- 冗長に書かない。
 """
     return PersonaSummaryRequest(
         prompt=prompt,
         identity=identity,
         display_name=display_name,
         comments=comments,
-        existing_summary=existing_summary,
     )
 
 
@@ -239,37 +211,46 @@ def run_persona_summary_ai(
     if runner is not None:
         text = runner(request.prompt)
     else:
+        log_execution(log, "Codex人物要約実行", level="INFO", comments=len(request.comments), model=model or "default")
         result = run_codex_exec(request.prompt, timeout_seconds=timeout_seconds, model=model, effort=effort)
         if not result.ok:
             log_error(log, "AI人物要約失敗", code=result.returncode, stderr=result.stderr[-300:])
             detail = result.stderr.strip() or f"returncode={result.returncode}"
             raise RuntimeError(f"persona summary AI failed: {detail}")
         text = result.text
-    plan = parse_persona_summary_json(text, log=log)
-    log_result(log, "AI人物要約", display_name=plan.display_name or "-", tags=",".join(plan.tags))
+        log_result(log, "Codex人物要約応答", chars=len(text))
+    plan = parse_persona_summary_response(text, log=log)
+    log_result(log, "AI人物要約", chars=len(plan.persona_summary))
     return PersonaSummaryAiResult(plan=plan, raw_response=text)
 
 
-def parse_persona_summary_json(text: str, *, log: LogSink = NullLogSink) -> PersonaSummaryPlan:
-    source = extract_json_object(text)
-    try:
-        payload = json.loads(source)
-    except json.JSONDecodeError as exc:
-        log_error(log, "人物要約JSON解析失敗", error=str(exc))
-        raise ValueError("AI response is not valid JSON") from exc
-    if not isinstance(payload, dict):
-        raise ValueError("AI response JSON must be an object")
-    tags = payload.get("tags") if isinstance(payload.get("tags"), list) else []
-    plan = PersonaSummaryPlan(
-        display_name=safe_display_name(payload.get("display_name")),
-        persona_summary=str(payload.get("persona_summary") or "").strip(),
-        speech_style=str(payload.get("speech_style") or "").strip(),
-        tags=tuple(str(item).strip() for item in tags if str(item).strip())[:6],
-        reason=str(payload.get("reason") or "").strip(),
-    )
-    if not plan.persona_summary:
+def parse_persona_summary_response(text: str, *, log: LogSink = NullLogSink) -> PersonaSummaryPlan:
+    summary = clean_persona_summary_text(text)
+    if not summary:
         raise ValueError("persona_summary is required")
-    return plan
+    return PersonaSummaryPlan(display_name="", persona_summary=summary, speech_style="", tags=(), reason="")
+
+
+def parse_persona_summary_json(text: str, *, log: LogSink = NullLogSink) -> PersonaSummaryPlan:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return parse_persona_summary_response(text, log=log)
+    if not isinstance(payload, dict):
+        return parse_persona_summary_response(text, log=log)
+    return parse_persona_summary_response(str(payload.get("persona_summary") or ""), log=log)
+
+
+def clean_persona_summary_text(text: str) -> str:
+    source = str(text or "").strip()
+    if source.startswith("```"):
+        lines = source.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        source = "\n".join(lines).strip()
+    return " ".join(source.replace("\r", " ").replace("\n", " ").split()).strip()
 
 
 def normalize_comment_text(value: Any) -> str:

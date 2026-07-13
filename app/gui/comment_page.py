@@ -65,6 +65,8 @@ class ElidedLabel(QLabel):
 
 
 def allow_horizontal_shrink(widget: QWidget) -> None:
+    if isinstance(widget, (QPushButton, QCheckBox)):
+        return
     policy = widget.sizePolicy()
     policy.setHorizontalPolicy(QSizePolicy.Policy.Ignored)
     widget.setSizePolicy(policy)
@@ -97,7 +99,8 @@ class CommentPage(QWidget):
         self.cancel_button.setEnabled(False)
         self.read_aloud_checkbox = QCheckBox("読み上げ")
         self.read_aloud_checkbox.setChecked(True)
-        self.obs_output_checkbox = QCheckBox("OBSスキン/フォント")
+        self.obs_output_checkbox = QCheckBox("OBS")
+        self.obs_output_checkbox.setToolTip("OBSスキン/フォント")
         self.obs_output_checkbox.setChecked(True)
         self.trace_checkbox = QCheckBox("TRACEで各メッセージもログ")
         self.level_combo = QComboBox()
@@ -110,6 +113,8 @@ class CommentPage(QWidget):
         address_row = QHBoxLayout()
         address_row.addWidget(QLabel("放送"))
         address_row.addWidget(self.lv_input, 1)
+        address_row.addWidget(self.read_aloud_checkbox)
+        address_row.addWidget(self.obs_output_checkbox)
         address_row.addWidget(self.connect_button)
         address_row.addWidget(self.cancel_button)
         address_row.addWidget(self.fetch_button)
@@ -120,8 +125,6 @@ class CommentPage(QWidget):
         log_row.addWidget(QLabel("ログ"))
         log_row.addWidget(self.level_combo)
         log_row.addWidget(self.trace_checkbox)
-        log_row.addWidget(self.read_aloud_checkbox)
-        log_row.addWidget(self.obs_output_checkbox)
 
         self.table = QTableWidget(0, len(COMMENT_TABLE_COLUMNS))
         self.table.setHorizontalHeaderLabels([label for _key, label, _width in COMMENT_TABLE_COLUMNS])

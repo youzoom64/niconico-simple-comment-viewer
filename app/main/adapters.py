@@ -19,3 +19,9 @@ def run_gui_entrypoint(argv: Sequence[str]) -> int:
         return int(module.main())
     finally:
         sys.argv = old_argv
+
+
+def run_api_entrypoint(argv: Sequence[str]) -> int:
+    from app.api.intervention_server import run
+
+    return run(list(argv))

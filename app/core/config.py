@@ -68,6 +68,8 @@ class AppConfig:
     youtube_accept_enabled: bool = False
     youtube_obs_source_name: str = "YouTube"
     youtube_chrome_profile: str = ""
+    rtfw_base_url: str = "http://127.0.0.1:8801"
+    rtfw_overlay_url: str = "http://127.0.0.1:8788/overlay"
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -135,6 +137,8 @@ class AppConfig:
             "youtube_accept_enabled": bool(data.get("youtube_accept_enabled", False)),
             "youtube_obs_source_name": str(data.get("youtube_obs_source_name") or "YouTube"),
             "youtube_chrome_profile": str(data.get("youtube_chrome_profile") or ""),
+            "rtfw_base_url": str(data.get("rtfw_base_url") or "http://127.0.0.1:8801"),
+            "rtfw_overlay_url": str(data.get("rtfw_overlay_url") or "http://127.0.0.1:8788/overlay"),
         }
         extra = {key: value for key, value in data.items() if key not in known}
         return cls(**known, extra=extra)
@@ -203,6 +207,8 @@ class AppConfig:
             "youtube_accept_enabled": self.youtube_accept_enabled,
             "youtube_obs_source_name": self.youtube_obs_source_name,
             "youtube_chrome_profile": self.youtube_chrome_profile,
+            "rtfw_base_url": self.rtfw_base_url,
+            "rtfw_overlay_url": self.rtfw_overlay_url,
             **self.extra,
         }
 
@@ -212,8 +218,8 @@ def normalize_obs_browser_sources(data: dict[str, Any]) -> list[dict[str, Any]]:
     if isinstance(raw, list):
         rows = [normalize_obs_browser_source(row) for row in raw if isinstance(row, dict)]
         if rows:
-            return rows
-    return [
+            return ensure_caption_obs_source(rows, data)
+    return ensure_caption_obs_source([
         {
             "label": "右から左スキン",
             "source": str(data.get("obs_skin_source_name") or "skin"),
@@ -227,6 +233,21 @@ def normalize_obs_browser_sources(data: dict[str, Any]) -> list[dict[str, Any]]:
             "url": str(data.get("obs_list_url") or "http://127.0.0.1:8792/list"),
             "width": int(data.get("obs_list_width") or 1920),
             "height": int(data.get("obs_list_height") or 1080),
+        },
+    ], data)
+
+
+def ensure_caption_obs_source(rows: list[dict[str, Any]], data: dict[str, Any]) -> list[dict[str, Any]]:
+    if any(str(row.get("source") or "").strip() == "字幕" for row in rows):
+        return rows
+    return [
+        *rows,
+        {
+            "label": "リアルタイム字幕",
+            "source": "字幕",
+            "url": str(data.get("rtfw_overlay_url") or "http://127.0.0.1:8788/overlay"),
+            "width": 1920,
+            "height": 1080,
         },
     ]
 

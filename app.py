@@ -9,8 +9,8 @@ from collections import Counter
 from datetime import datetime
 from typing import Any
 
-from PyQt6.QtCore import QObject, QThread, Qt, QSize, QUrl, pyqtSignal
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtCore import QObject, QThread, Qt, QSize, QTimer, QUrl, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QDesktopServices
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -56,6 +56,7 @@ from app.gui.tabs.broadcast_history import BROADCAST_HISTORY_TABLE_STATE_KEY, Br
 from app.gui.tabs.event_presets import EventPresetsTab
 from app.gui.tabs.live_users import LiveUsersTab
 from app.gui.tabs.obs_control import ObsControlTab
+from app.gui.tabs.rtfw_control import RtfwControlTab
 from app.gui.user_icons import cached_user_icon
 from app.ndgr.fetcher import AllCommentFetcher
 from app.ndgr.results import FetchResult
@@ -65,6 +66,7 @@ from app.profiles.comment_setting_apply import apply_comment_setting_command_to_
 from app.profiles.listener_identity import resolve_listener_identity
 from app.services.agent_process_watch import register_agent_process_watch
 from app.services.ai_reply import AiReplyHook
+from app.services.auto_profile.persona_summary import load_persona_memo, persona_memo_path
 from app.services.auto_profile.results import auto_profile_result_exists, auto_profile_result_path, load_auto_profile_result
 from app.services.comment_post import post_comment
 from app.services.output.output_coordinator import OutputCoordinator
@@ -113,6 +115,13 @@ def format_event_counts(counts: Counter[str]) -> str:
         f"{EVENT_KIND_LABELS.get(str(kind), str(kind))}:{count}"
         for kind, count in counts.items()
     )
+
+
+def compact_status_message(message: str, *, max_length: int = 90) -> str:
+    text = re.sub(r"\s+", " ", str(message or "")).strip()
+    if len(text) <= max_length:
+        return text
+    return f"{text[: max(1, max_length - 1)]}..."
 
 
 class CommentTabBar(QTabBar):
@@ -306,6 +315,7 @@ class MainWindow(QMainWindow):
         self.auto_profile_worker: AutoProfileWorker | None = None
         self.persona_summary_thread: QThread | None = None
         self.persona_summary_worker: PersonaSummaryWorker | None = None
+        self.processing_row_highlights: dict[str, tuple[CommentPage, int]] = {}
         self.auto_profile_result_dialogs: list[AutoProfileResultDialog] = []
 
         self.comment_tab_widget = QTabWidget()
@@ -340,6 +350,9 @@ class MainWindow(QMainWindow):
         self.obs_control_tab = ObsControlTab(self.settings_store, self.app_config)
         self.obs_control_tab.config_saved.connect(self.apply_basic_config)
         self.tabs.addTab(self.obs_control_tab, "OBS連携")
+        self.rtfw_control_tab = RtfwControlTab(self.settings_store, self.app_config)
+        self.rtfw_control_tab.config_saved.connect(self.apply_basic_config)
+        self.tabs.addTab(self.rtfw_control_tab, "リアルタイム字幕")
         self.setCentralWidget(self.tabs)
 
         self.restore_ui_state()
@@ -349,6 +362,13 @@ class MainWindow(QMainWindow):
             self.append_log("INFO", f"OBSリスト表示URL: {self.overlay_server.list_url}")
         except Exception as exc:
             self.append_log("ERROR", f"OBSオーバーレイ起動失敗: {type(exc).__name__}: {exc}")
+        QTimer.singleShot(0, self.run_initial_obs_update)
+
+    def run_initial_obs_update(self) -> None:
+        if not hasattr(self, "obs_control_tab"):
+            return
+        self.append_log("INFO", "OBS一括更新: 起動時初回")
+        self.obs_control_tab.update_all()
         self.voicevox_pipeline.start()
         self.append_log("INFO", f"VOICEVOX FIFO起動: workers={self.app_config.voicevox_worker_count}")
 
@@ -398,32 +418,37 @@ class MainWindow(QMainWindow):
                     self.row_has_listener_identity,
                 ),
                 TableContextAction(
+                    "保存済み人物要約を表示",
+                    lambda row, row_index, column_index, p=page: self.open_persona_memo_from_row(p, row, row_index, column_index),
+                    self.row_has_persona_memo,
+                ),
+                TableContextAction(
                     "人物要約",
                     enabled=self.row_has_listener_identity,
                     children=(
                         TableContextAction(
                             "最新20件で要約",
-                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, 20),
+                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, row_index, 20),
                             self.row_has_listener_identity,
                         ),
                         TableContextAction(
                             "最新50件で要約",
-                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, 50),
+                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, row_index, 50),
                             self.row_has_listener_identity,
                         ),
                         TableContextAction(
                             "最新100件で要約",
-                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, 100),
+                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, row_index, 100),
                             self.row_has_listener_identity,
                         ),
                         TableContextAction(
                             "最新200件で要約",
-                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, 200),
+                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, row_index, 200),
                             self.row_has_listener_identity,
                         ),
                         TableContextAction(
                             "全件で要約",
-                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, None),
+                            lambda row, row_index, column_index, p=page: self.start_persona_summary_from_row(p, row, row_index, None),
                             self.row_has_listener_identity,
                         ),
                     ),
@@ -972,7 +997,7 @@ class MainWindow(QMainWindow):
         if thread in self.tag_change_threads:
             self.tag_change_threads.remove(thread)
 
-    def start_auto_profile_from_row(self, page: CommentPage, row: dict[str, Any], _row_index: int, _column_index: int) -> None:
+    def start_auto_profile_from_row(self, page: CommentPage, row: dict[str, Any], row_index: int, _column_index: int) -> None:
         if self.auto_profile_thread is not None:
             QMessageBox.information(self, "自動演出作成中", "自動演出プロフィールを作成中です")
             return
@@ -982,18 +1007,23 @@ class MainWindow(QMainWindow):
             return
         page.status_label.setText(f"自動演出作成中: {identity.label}")
         self.append_log("INFO", f"自動演出プロフィール作成開始: {identity.label}", page)
+        self.set_processing_row_highlight("auto_profile", page, row_index)
+        worker_row = dict(row)
+        display_name = self.display_name_from_row(row, page)
+        if display_name:
+            worker_row["display_name"] = display_name
         self.auto_profile_thread = QThread()
-        self.auto_profile_worker = AutoProfileWorker(row, page.current_lv, self.app_config)
+        self.auto_profile_worker = AutoProfileWorker(worker_row, page.current_lv, self.app_config)
         self.auto_profile_worker.moveToThread(self.auto_profile_thread)
         self.auto_profile_thread.started.connect(self.auto_profile_worker.run)
-        self.auto_profile_worker.log.connect(lambda level, message, p=page: self.handle_log(level, message, p))
+        self.auto_profile_worker.log.connect(lambda level, message, p=page: self.handle_background_task_log(p, "自動演出", level, message))
         self.auto_profile_worker.finished.connect(lambda result, p=page: self.auto_profile_finished(p, result))
         self.auto_profile_worker.failed.connect(lambda message, p=page: self.auto_profile_failed(p, message))
         self.auto_profile_worker.finished.connect(lambda _result: self.cleanup_auto_profile_worker())
         self.auto_profile_worker.failed.connect(lambda _message: self.cleanup_auto_profile_worker())
         self.auto_profile_thread.start()
 
-    def start_persona_summary_from_row(self, page: CommentPage, row: dict[str, Any], comment_limit: int | None) -> None:
+    def start_persona_summary_from_row(self, page: CommentPage, row: dict[str, Any], row_index: int, comment_limit: int | None) -> None:
         if self.persona_summary_thread is not None:
             QMessageBox.information(self, "人物要約中", "人物要約を作成中です")
             return
@@ -1004,11 +1034,16 @@ class MainWindow(QMainWindow):
         limit_label = "全件" if comment_limit is None else f"最新{comment_limit}件"
         page.status_label.setText(f"人物要約作成中: {identity.label} / {limit_label}")
         self.append_log("INFO", f"人物要約作成開始: {identity.label} limit={limit_label}", page)
+        self.set_processing_row_highlight("persona_summary", page, row_index)
+        worker_row = dict(row)
+        display_name = self.display_name_from_row(row, page)
+        if display_name:
+            worker_row["display_name"] = display_name
         self.persona_summary_thread = QThread()
-        self.persona_summary_worker = PersonaSummaryWorker(row, page.current_lv, comment_limit, self.app_config)
+        self.persona_summary_worker = PersonaSummaryWorker(worker_row, page.current_lv, comment_limit, self.app_config)
         self.persona_summary_worker.moveToThread(self.persona_summary_thread)
         self.persona_summary_thread.started.connect(self.persona_summary_worker.run)
-        self.persona_summary_worker.log.connect(lambda level, message, p=page: self.handle_log(level, message, p))
+        self.persona_summary_worker.log.connect(lambda level, message, p=page: self.handle_background_task_log(p, "人物要約", level, message))
         self.persona_summary_worker.finished.connect(lambda result, p=page: self.persona_summary_finished(p, result))
         self.persona_summary_worker.failed.connect(lambda message, p=page: self.persona_summary_failed(p, message))
         self.persona_summary_worker.finished.connect(lambda _result: self.cleanup_persona_summary_worker())
@@ -1036,12 +1071,13 @@ class MainWindow(QMainWindow):
         box.exec()
 
     def auto_profile_finished(self, page: CommentPage, result: Any) -> None:
-        self.live_users_tab.reload()
+        account_id = str(getattr(result, "account_id", "") or "")
+        self.live_users_tab.reload(select_user_id=account_id)
         self.reload_profile_display_names()
         page.status_label.setText(f"自動演出作成完了: {result.identity_label}")
         self.append_log(
             "INFO",
-            f"自動演出プロフィール作成完了: {result.identity_label} command={result.command} result={result.result_path}",
+            f"自動演出プロフィール作成完了: {result.identity_label} account={account_id or '-'} command={result.command} result={result.result_path}",
             page,
         )
 
@@ -1058,6 +1094,7 @@ class MainWindow(QMainWindow):
         box.exec()
 
     def cleanup_auto_profile_worker(self) -> None:
+        self.clear_processing_row_highlight("auto_profile")
         if self.auto_profile_thread:
             self.auto_profile_thread.quit()
             self.auto_profile_thread.wait(3000)
@@ -1065,11 +1102,45 @@ class MainWindow(QMainWindow):
         self.auto_profile_worker = None
 
     def cleanup_persona_summary_worker(self) -> None:
+        self.clear_processing_row_highlight("persona_summary")
         if self.persona_summary_thread:
             self.persona_summary_thread.quit()
             self.persona_summary_thread.wait(3000)
         self.persona_summary_thread = None
         self.persona_summary_worker = None
+
+    def set_processing_row_highlight(self, task_key: str, page: CommentPage, row_index: int) -> None:
+        previous = self.processing_row_highlights.get(task_key)
+        self.processing_row_highlights[task_key] = (page, row_index)
+        if previous is not None:
+            previous_page, previous_row_index = previous
+            self.apply_processing_row_highlight(previous_page, previous_row_index)
+        self.apply_processing_row_highlight(page, row_index)
+
+    def clear_processing_row_highlight(self, task_key: str) -> None:
+        previous = self.processing_row_highlights.pop(task_key, None)
+        if previous is None:
+            return
+        page, row_index = previous
+        self.apply_processing_row_highlight(page, row_index)
+
+    def apply_processing_row_highlight(self, page: CommentPage, row_index: int) -> None:
+        if row_index < 0 or row_index >= page.table.rowCount():
+            return
+        active = any(target_page is page and target_row == row_index for target_page, target_row in self.processing_row_highlights.values())
+        background = QBrush(QColor("#fff08a")) if active else QBrush()
+        foreground = QBrush(QColor("#111827")) if active else QBrush()
+        for column_index in range(page.table.columnCount()):
+            item = page.table.item(row_index, column_index)
+            if item is None:
+                continue
+            item.setBackground(background)
+            item.setForeground(foreground)
+
+    def handle_background_task_log(self, page: CommentPage, task_label: str, level: str, message: str) -> None:
+        self.handle_log(level, message, page)
+        if LOG_LEVELS.get(level, 30) >= LOG_LEVELS["INFO"]:
+            page.status_label.setText(f"{task_label}: {compact_status_message(message)}")
 
     def row_has_auto_profile_result(self, row: dict[str, Any], _row_index: int, _column_index: int) -> bool:
         identity = resolve_listener_identity(row)
@@ -1198,20 +1269,33 @@ class MainWindow(QMainWindow):
                 item = QTableWidgetItem(str(row.get(key, "")))
             if key == "content":
                 item.setToolTip(str(row.get(key, "")))
+            item.setData(Qt.ItemDataRole.UserRole, row_index)
             page.table.setItem(row_index, column_index, item)
         page.table.setRowHeight(row_index, 36)
+        self.apply_processing_row_highlight(page, row_index)
+
+    def source_row_index_for_table_row(self, page: CommentPage, row_index: int) -> int:
+        if row_index < 0:
+            return -1
+        item = page.table.item(row_index, 0)
+        if item is not None:
+            source_index = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(source_index, int):
+                return source_index
+        return row_index
 
     def show_selected_raw(self, page: CommentPage | None = None) -> None:
         target = page or self.current_comment_page()
         selected = target.table.selectionModel().selectedRows()
         if not selected:
             return
-        row_index = selected[0].row()
+        row_index = self.source_row_index_for_table_row(target, selected[0].row())
         if row_index < 0 or row_index >= len(target.rows):
             return
         target.raw_text.setPlainText(json.dumps(target.rows[row_index], ensure_ascii=False, indent=2, default=json_default))
 
     def row_data_for_menu(self, page: CommentPage, row_index: int) -> dict[str, Any] | None:
+        row_index = self.source_row_index_for_table_row(page, row_index)
         if row_index < 0 or row_index >= len(page.rows):
             return None
         return page.rows[row_index]
@@ -1222,8 +1306,34 @@ class MainWindow(QMainWindow):
     def row_has_listener_identity(self, row: dict[str, Any], _row_index: int, _column_index: int) -> bool:
         return not resolve_listener_identity(row).is_empty()
 
+    def row_has_persona_memo(self, row: dict[str, Any], _row_index: int, _column_index: int) -> bool:
+        identity = resolve_listener_identity(row)
+        return not identity.is_empty() and persona_memo_path(identity).is_file()
+
     def row_has_listener_page(self, row: dict[str, Any], _row_index: int, _column_index: int) -> bool:
         return bool(self.niconico_user_id_from_row(row))
+
+    def open_persona_memo_from_row(self, page: CommentPage, row: dict[str, Any], _row_index: int, _column_index: int) -> None:
+        identity = resolve_listener_identity(row)
+        if identity.is_empty():
+            QMessageBox.information(self, "人物要約なし", "この行には要約対象のリスナーIDがない")
+            return
+        memo = load_persona_memo(identity)
+        if not memo:
+            QMessageBox.information(self, "人物要約なし", "保存済みの人物要約はありません")
+            return
+        summary = str(memo.get("persona_summary") or "").strip()
+        if not summary:
+            summary = "要約本文が空です"
+        path = persona_memo_path(identity)
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle("保存済み人物要約")
+        box.setText(f"{identity.label}\n\n{summary}")
+        box.setInformativeText(f"保存先: {path}")
+        box.setDetailedText(json.dumps(memo, ensure_ascii=False, indent=2, default=json_default))
+        box.exec()
+        self.append_log("INFO", f"保存済み人物要約表示: {identity.label} {path}", page)
 
     def open_listener_history_from_row(self, page: CommentPage, row: dict[str, Any], _row_index: int, _column_index: int) -> None:
         identity = resolve_listener_identity(row)
@@ -1484,6 +1594,8 @@ class MainWindow(QMainWindow):
             thread.quit()
             thread.wait(3000)
         self.voicevox_pipeline.stop()
+        if hasattr(self, "rtfw_control_tab"):
+            self.rtfw_control_tab.shutdown()
         self.overlay_server.stop()
         super().closeEvent(event)
 
