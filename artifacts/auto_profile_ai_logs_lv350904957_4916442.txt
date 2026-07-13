@@ -1,0 +1,11 @@
+[INFO] [実行] / VOICEVOXボイス一覧取得 / base_url=http://127.0.0.1:50021
+[INFO] [結果] / VOICEVOXボイス一覧取得 / count=127
+[INFO] [実行] / 本人アイコン取得 / user_id=4916442
+[INFO] [結果] / 本人アイコン取得 / path=J:\utility\Niconico\niconico-simple-comment-viewer\data\icon_cache\4916442.jpg / summary=True
+[INFO] [実行] / 過去コメント収集 / identity=アカウントID: 4916442 / lv=lv350904957 / limit=200
+[INFO] [結果] / 過去コメント収集 / count=147 / identity=アカウントID: 4916442
+[INFO] [結果] / 自動演出コンテキスト作成 / comments=147 / display_name=-
+[INFO] [結果] / AI入力作成 / comments=0 / persona_memo=yes / fonts=20 / voices=127
+[INFO] [実行] / AI自動演出判定 / timeout=120 / model=default
+[INFO] [結果] / AI JSON解析 / font=13 / voice=31
+[INFO] [結果] / AI自動演出判定 / font=13 / voice=31 / display_name=ありさ

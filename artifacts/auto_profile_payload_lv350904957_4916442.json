@@ -1,0 +1,847 @@
+{
+  "task": "infer_listener_visual_voice_profile",
+  "constraints": {
+    "return_json_only": true,
+    "skin_width": 512,
+    "skin_height": 32,
+    "do_not_infer_sensitive_identity": true,
+    "command_format": "＠表示名{S<skin_id>,F<font_id>,V<voice_id>}"
+  },
+  "target": {
+    "identity_label": "アカウントID: 4916442",
+    "display_name": "",
+    "row": {
+      "source": "stream",
+      "page_index": 307,
+      "message_id": "EhoKEgmNfuAdHjifARH5bpiRdzg2lxCh9saCBQ",
+      "at": "2026-07-07T00:48:45.664145",
+      "kind": "chat",
+      "no": "513",
+      "user_id": "4916442",
+      "raw_user_id": "4916442",
+      "hashed_user_id": "",
+      "account_status": "Standard",
+      "vpos": "1563607",
+      "commands": "",
+      "content": "お疲れ様",
+      "display_text": "お疲れ様",
+      "speech_text": "お疲れ様",
+      "payload": {
+        "content": "お疲れ様",
+        "name": "ありさ",
+        "vpos": 1563607,
+        "raw_user_id": "4916442",
+        "modifier": {},
+        "no": 513
+      },
+      "raw": {
+        "meta": {
+          "id": "EhoKEgmNfuAdHjifARH5bpiRdzg2lxCh9saCBQ",
+          "at": "2026-07-06T15:48:45.664145Z",
+          "origin": {
+            "chat": {
+              "live_id": "350904957"
+            }
+          }
+        },
+        "message": {
+          "chat": {
+            "content": "お疲れ様",
+            "name": "ありさ",
+            "vpos": 1563607,
+            "raw_user_id": "4916442",
+            "modifier": {},
+            "no": 513
+          }
+        }
+      }
+    },
+    "persona_memo": {
+      "persona_summary": "この本文だけから見ると、このリスナーは**政治・経済・戦争責任・防衛**のような社会問題に強く関心があり、特に**反自民・左派寄りの問題意識**を中心にコメントしている傾向です。 主な特徴は次の通りです。 - 配信者への反応や感謝も挟む、対話型のコメントが多い - 政治的には反自民の立場が強く、経済衰退や国債、戦争利益、防衛などを話題にする - 共産党や市民連合系の活動に近い場所へ参加しているが、本人は「現実には暴力的なことはしない」と線引きしている - 自分が配信者の影響を受けていること、周囲から危なっかしいと言われていることを自覚している - 「過激派に見えているのか」と、他人からの見え方を気にしている - 口調は砕けていて、関西寄りの自然な会話調が多い 要するに、**政治的な自己認識と不安を配信内で確認しながら話す、社会問題関心の強いリスナー**という印象です。"
+    }
+  },
+  "icon": {
+    "local_path": "J:\\utility\\Niconico\\niconico-simple-comment-viewer\\data\\icon_cache\\4916442.jpg",
+    "exists": true,
+    "summary": {
+      "path": "J:\\utility\\Niconico\\niconico-simple-comment-viewer\\data\\icon_cache\\4916442.jpg",
+      "width": 150,
+      "height": 150,
+      "average_color": "#967c84",
+      "dominant_colors": [
+        "#faf0e8",
+        "#2c1727",
+        "#50354c",
+        "#684a61",
+        "#4f242e"
+      ]
+    },
+    "instruction": "local_path の本人アイコン画像も参考にする。ただし画像から実在身元やセンシティブ属性を断定しない。"
+  },
+  "skin_spec": {
+    "width": 512,
+    "height": 32,
+    "description": "OBSコメント用の横長スキン。中央の文字レーンを読みやすく空ける。"
+  },
+  "fonts": [
+    {
+      "id": 0,
+      "family": "既定フォント",
+      "description": ""
+    },
+    {
+      "id": 1,
+      "family": "Dela Gothic One",
+      "description": ""
+    },
+    {
+      "id": 2,
+      "family": "Hachi Maru Pop",
+      "description": ""
+    },
+    {
+      "id": 3,
+      "family": "Klee One",
+      "description": ""
+    },
+    {
+      "id": 4,
+      "family": "RocknRoll One",
+      "description": ""
+    },
+    {
+      "id": 5,
+      "family": "New Tegomin",
+      "description": ""
+    },
+    {
+      "id": 6,
+      "family": "Train One",
+      "description": ""
+    },
+    {
+      "id": 7,
+      "family": "DotGothic16",
+      "description": ""
+    },
+    {
+      "id": 8,
+      "family": "Reggae One",
+      "description": ""
+    },
+    {
+      "id": 9,
+      "family": "Yuji Syuku",
+      "description": ""
+    },
+    {
+      "id": 10,
+      "family": "Yuji Boku",
+      "description": ""
+    },
+    {
+      "id": 11,
+      "family": "Mochiy Pop One",
+      "description": ""
+    },
+    {
+      "id": 12,
+      "family": "Kaisei HarunoUmi",
+      "description": ""
+    },
+    {
+      "id": 13,
+      "family": "Shippori Antique",
+      "description": ""
+    },
+    {
+      "id": 14,
+      "family": "Stick",
+      "description": ""
+    },
+    {
+      "id": 15,
+      "family": "Rampart One",
+      "description": ""
+    },
+    {
+      "id": 16,
+      "family": "Zen Antique",
+      "description": ""
+    },
+    {
+      "id": 17,
+      "family": "Mochiy Pop P One",
+      "description": ""
+    },
+    {
+      "id": 18,
+      "family": "Zen Kurenaido",
+      "description": ""
+    },
+    {
+      "id": 19,
+      "family": "Yusei Magic",
+      "description": ""
+    }
+  ],
+  "voices": [
+    {
+      "id": 2,
+      "label": "四国めたん / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 0,
+      "label": "四国めたん / あまあま",
+      "description": ""
+    },
+    {
+      "id": 6,
+      "label": "四国めたん / ツンツン",
+      "description": ""
+    },
+    {
+      "id": 4,
+      "label": "四国めたん / セクシー",
+      "description": ""
+    },
+    {
+      "id": 36,
+      "label": "四国めたん / ささやき",
+      "description": ""
+    },
+    {
+      "id": 37,
+      "label": "四国めたん / ヒソヒソ",
+      "description": ""
+    },
+    {
+      "id": 3,
+      "label": "ずんだもん / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 1,
+      "label": "ずんだもん / あまあま",
+      "description": ""
+    },
+    {
+      "id": 7,
+      "label": "ずんだもん / ツンツン",
+      "description": ""
+    },
+    {
+      "id": 5,
+      "label": "ずんだもん / セクシー",
+      "description": ""
+    },
+    {
+      "id": 22,
+      "label": "ずんだもん / ささやき",
+      "description": ""
+    },
+    {
+      "id": 38,
+      "label": "ずんだもん / ヒソヒソ",
+      "description": ""
+    },
+    {
+      "id": 75,
+      "label": "ずんだもん / ヘロヘロ",
+      "description": ""
+    },
+    {
+      "id": 76,
+      "label": "ずんだもん / なみだめ",
+      "description": ""
+    },
+    {
+      "id": 8,
+      "label": "春日部つむぎ / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 10,
+      "label": "雨晴はう / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 9,
+      "label": "波音リツ / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 65,
+      "label": "波音リツ / クイーン",
+      "description": ""
+    },
+    {
+      "id": 11,
+      "label": "玄野武宏 / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 39,
+      "label": "玄野武宏 / 喜び",
+      "description": ""
+    },
+    {
+      "id": 40,
+      "label": "玄野武宏 / ツンギレ",
+      "description": ""
+    },
+    {
+      "id": 41,
+      "label": "玄野武宏 / 悲しみ",
+      "description": ""
+    },
+    {
+      "id": 12,
+      "label": "白上虎太郎 / ふつう",
+      "description": ""
+    },
+    {
+      "id": 32,
+      "label": "白上虎太郎 / わーい",
+      "description": ""
+    },
+    {
+      "id": 33,
+      "label": "白上虎太郎 / びくびく",
+      "description": ""
+    },
+    {
+      "id": 34,
+      "label": "白上虎太郎 / おこ",
+      "description": ""
+    },
+    {
+      "id": 35,
+      "label": "白上虎太郎 / びえーん",
+      "description": ""
+    },
+    {
+      "id": 13,
+      "label": "青山龍星 / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 81,
+      "label": "青山龍星 / 熱血",
+      "description": ""
+    },
+    {
+      "id": 82,
+      "label": "青山龍星 / 不機嫌",
+      "description": ""
+    },
+    {
+      "id": 83,
+      "label": "青山龍星 / 喜び",
+      "description": ""
+    },
+    {
+      "id": 84,
+      "label": "青山龍星 / しっとり",
+      "description": ""
+    },
+    {
+      "id": 85,
+      "label": "青山龍星 / かなしみ",
+      "description": ""
+    },
+    {
+      "id": 86,
+      "label": "青山龍星 / 囁き",
+      "description": ""
+    },
+    {
+      "id": 14,
+      "label": "冥鳴ひまり / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 16,
+      "label": "九州そら / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 15,
+      "label": "九州そら / あまあま",
+      "description": ""
+    },
+    {
+      "id": 18,
+      "label": "九州そら / ツンツン",
+      "description": ""
+    },
+    {
+      "id": 17,
+      "label": "九州そら / セクシー",
+      "description": ""
+    },
+    {
+      "id": 19,
+      "label": "九州そら / ささやき",
+      "description": ""
+    },
+    {
+      "id": 20,
+      "label": "もち子さん / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 66,
+      "label": "もち子さん / セクシー／あん子",
+      "description": ""
+    },
+    {
+      "id": 77,
+      "label": "もち子さん / 泣き",
+      "description": ""
+    },
+    {
+      "id": 78,
+      "label": "もち子さん / 怒り",
+      "description": ""
+    },
+    {
+      "id": 79,
+      "label": "もち子さん / 喜び",
+      "description": ""
+    },
+    {
+      "id": 80,
+      "label": "もち子さん / のんびり",
+      "description": ""
+    },
+    {
+      "id": 21,
+      "label": "剣崎雌雄 / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 23,
+      "label": "WhiteCUL / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 24,
+      "label": "WhiteCUL / たのしい",
+      "description": ""
+    },
+    {
+      "id": 25,
+      "label": "WhiteCUL / かなしい",
+      "description": ""
+    },
+    {
+      "id": 26,
+      "label": "WhiteCUL / びえーん",
+      "description": ""
+    },
+    {
+      "id": 27,
+      "label": "後鬼 / 人間ver.",
+      "description": ""
+    },
+    {
+      "id": 28,
+      "label": "後鬼 / ぬいぐるみver.",
+      "description": ""
+    },
+    {
+      "id": 87,
+      "label": "後鬼 / 人間（怒り）ver.",
+      "description": ""
+    },
+    {
+      "id": 88,
+      "label": "後鬼 / 鬼ver.",
+      "description": ""
+    },
+    {
+      "id": 29,
+      "label": "No.7 / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 30,
+      "label": "No.7 / アナウンス",
+      "description": ""
+    },
+    {
+      "id": 31,
+      "label": "No.7 / 読み聞かせ",
+      "description": ""
+    },
+    {
+      "id": 42,
+      "label": "ちび式じい / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 43,
+      "label": "櫻歌ミコ / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 44,
+      "label": "櫻歌ミコ / 第二形態",
+      "description": ""
+    },
+    {
+      "id": 45,
+      "label": "櫻歌ミコ / ロリ",
+      "description": ""
+    },
+    {
+      "id": 46,
+      "label": "小夜/SAYO / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 47,
+      "label": "ナースロボ＿タイプＴ / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 48,
+      "label": "ナースロボ＿タイプＴ / 楽々",
+      "description": ""
+    },
+    {
+      "id": 49,
+      "label": "ナースロボ＿タイプＴ / 恐怖",
+      "description": ""
+    },
+    {
+      "id": 50,
+      "label": "ナースロボ＿タイプＴ / 内緒話",
+      "description": ""
+    },
+    {
+      "id": 51,
+      "label": "†聖騎士 紅桜† / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 52,
+      "label": "雀松朱司 / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 53,
+      "label": "麒ヶ島宗麟 / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 54,
+      "label": "春歌ナナ / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 55,
+      "label": "猫使アル / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 56,
+      "label": "猫使アル / おちつき",
+      "description": ""
+    },
+    {
+      "id": 57,
+      "label": "猫使アル / うきうき",
+      "description": ""
+    },
+    {
+      "id": 110,
+      "label": "猫使アル / つよつよ",
+      "description": ""
+    },
+    {
+      "id": 111,
+      "label": "猫使アル / へろへろ",
+      "description": ""
+    },
+    {
+      "id": 58,
+      "label": "猫使ビィ / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 59,
+      "label": "猫使ビィ / おちつき",
+      "description": ""
+    },
+    {
+      "id": 60,
+      "label": "猫使ビィ / 人見知り",
+      "description": ""
+    },
+    {
+      "id": 112,
+      "label": "猫使ビィ / つよつよ",
+      "description": ""
+    },
+    {
+      "id": 61,
+      "label": "中国うさぎ / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 62,
+      "label": "中国うさぎ / おどろき",
+      "description": ""
+    },
+    {
+      "id": 63,
+      "label": "中国うさぎ / こわがり",
+      "description": ""
+    },
+    {
+      "id": 64,
+      "label": "中国うさぎ / へろへろ",
+      "description": ""
+    },
+    {
+      "id": 67,
+      "label": "栗田まろん / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 68,
+      "label": "あいえるたん / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 69,
+      "label": "満別花丸 / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 70,
+      "label": "満別花丸 / 元気",
+      "description": ""
+    },
+    {
+      "id": 71,
+      "label": "満別花丸 / ささやき",
+      "description": ""
+    },
+    {
+      "id": 72,
+      "label": "満別花丸 / ぶりっ子",
+      "description": ""
+    },
+    {
+      "id": 73,
+      "label": "満別花丸 / ボーイ",
+      "description": ""
+    },
+    {
+      "id": 74,
+      "label": "琴詠ニア / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 89,
+      "label": "Voidoll / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 90,
+      "label": "ぞん子 / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 91,
+      "label": "ぞん子 / 低血圧",
+      "description": ""
+    },
+    {
+      "id": 92,
+      "label": "ぞん子 / 覚醒",
+      "description": ""
+    },
+    {
+      "id": 93,
+      "label": "ぞん子 / 実況風",
+      "description": ""
+    },
+    {
+      "id": 94,
+      "label": "中部つるぎ / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 95,
+      "label": "中部つるぎ / 怒り",
+      "description": ""
+    },
+    {
+      "id": 96,
+      "label": "中部つるぎ / ヒソヒソ",
+      "description": ""
+    },
+    {
+      "id": 97,
+      "label": "中部つるぎ / おどおど",
+      "description": ""
+    },
+    {
+      "id": 98,
+      "label": "中部つるぎ / 絶望と敗北",
+      "description": ""
+    },
+    {
+      "id": 99,
+      "label": "離途 / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 101,
+      "label": "離途 / シリアス",
+      "description": ""
+    },
+    {
+      "id": 100,
+      "label": "黒沢冴白 / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 102,
+      "label": "ユーレイちゃん / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 103,
+      "label": "ユーレイちゃん / 甘々",
+      "description": ""
+    },
+    {
+      "id": 104,
+      "label": "ユーレイちゃん / 哀しみ",
+      "description": ""
+    },
+    {
+      "id": 105,
+      "label": "ユーレイちゃん / ささやき",
+      "description": ""
+    },
+    {
+      "id": 106,
+      "label": "ユーレイちゃん / ツクモちゃん",
+      "description": ""
+    },
+    {
+      "id": 107,
+      "label": "東北ずん子 / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 108,
+      "label": "東北きりたん / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 109,
+      "label": "東北イタコ / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 113,
+      "label": "あんこもん / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 114,
+      "label": "あんこもん / つよつよ",
+      "description": ""
+    },
+    {
+      "id": 115,
+      "label": "あんこもん / よわよわ",
+      "description": ""
+    },
+    {
+      "id": 116,
+      "label": "あんこもん / けだるげ",
+      "description": ""
+    },
+    {
+      "id": 117,
+      "label": "あんこもん / ささやき",
+      "description": ""
+    },
+    {
+      "id": 118,
+      "label": "夜語トバリ / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 119,
+      "label": "夜語トバリ / 明るい",
+      "description": ""
+    },
+    {
+      "id": 120,
+      "label": "夜語トバリ / 哀しみ",
+      "description": ""
+    },
+    {
+      "id": 121,
+      "label": "夜語トバリ / 呆れ",
+      "description": ""
+    },
+    {
+      "id": 122,
+      "label": "暁記ミタマ / ノーマル",
+      "description": ""
+    },
+    {
+      "id": 123,
+      "label": "暁記ミタマ / 怒り",
+      "description": ""
+    },
+    {
+      "id": 124,
+      "label": "暁記ミタマ / 哀しみ",
+      "description": ""
+    },
+    {
+      "id": 125,
+      "label": "暁記ミタマ / ささやき",
+      "description": ""
+    },
+    {
+      "id": 126,
+      "label": "里石ユカ / つぼみ",
+      "description": ""
+    }
+  ],
+  "comments": [],
+  "expected_json": {
+    "display_name": "string",
+    "persona_summary": "string",
+    "skin": {
+      "concept": "string",
+      "prompt": "string",
+      "palette": [
+        "#000000",
+        "#ffffff"
+      ]
+    },
+    "font": {
+      "id": 0,
+      "reason": "string"
+    },
+    "voice": {
+      "id": 0,
+      "reason": "string"
+    },
+    "reason": "string"
+  }
+}
