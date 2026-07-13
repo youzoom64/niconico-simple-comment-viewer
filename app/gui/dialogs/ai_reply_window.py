@@ -37,6 +37,7 @@ from app.services.manual_ai_reply_prompt import (
     build_manual_ai_reply_prompt,
     build_target_comment_summary,
 )
+from app.services.manual_ai_reply_vector_context import build_manual_ai_reply_vector_context
 
 
 class ManualAiReplyCodexWorker(QObject):
@@ -88,6 +89,10 @@ class AiReplyWindowDialog(QDialog):
         self._last_generated_prompt = ""
         self._broadcast_comments_context: str | None = None
         self._broadcaster_transcript_context: str | None = None
+        self._similar_comments_context: str | None = None
+        self._similar_comments_result_count = 0
+        self._similar_comments_searched_count = 0
+        self._similar_comments_search_error = ""
         self._loading_settings = False
         self._codex_thread: QThread | None = None
         self._codex_worker: ManualAiReplyCodexWorker | None = None
@@ -113,6 +118,7 @@ class AiReplyWindowDialog(QDialog):
         self.output_conditions_edit.setMinimumHeight(110)
         self.include_broadcaster_transcript_checkbox = QCheckBox("放送者の文字起こしを渡す")
         self.include_all_comments_checkbox = QCheckBox("放送全体のコメントを渡す")
+        self.include_similar_comments_checkbox = QCheckBox("対象アカウントの過去コメント検索を渡す")
         self.prompt_edit = QTextEdit()
         self.prompt_edit.setMinimumHeight(180)
         self.result_edit = QTextEdit()
@@ -144,6 +150,7 @@ class AiReplyWindowDialog(QDialog):
         checkbox_row = QHBoxLayout()
         checkbox_row.addWidget(self.include_broadcaster_transcript_checkbox)
         checkbox_row.addWidget(self.include_all_comments_checkbox)
+        checkbox_row.addWidget(self.include_similar_comments_checkbox)
         checkbox_row.addStretch(1)
 
         settings_button_row = QHBoxLayout()
@@ -177,6 +184,7 @@ class AiReplyWindowDialog(QDialog):
         self.output_conditions_edit.textChanged.connect(self._refresh_prompt_if_unedited)
         self.include_broadcaster_transcript_checkbox.toggled.connect(lambda _checked: self._refresh_prompt_if_unedited())
         self.include_all_comments_checkbox.toggled.connect(lambda _checked: self._refresh_prompt_if_unedited())
+        self.include_similar_comments_checkbox.toggled.connect(self._handle_similar_comments_toggled)
         self.save_button.clicked.connect(self.save_settings)
         self.reload_button.clicked.connect(self.reload_settings)
         self.generate_button.clicked.connect(self.generate_reply)
@@ -207,6 +215,7 @@ class AiReplyWindowDialog(QDialog):
                 bool(settings.get("manual_ai_reply_include_broadcaster_transcript", False))
             )
             self.include_all_comments_checkbox.setChecked(bool(settings.get("manual_ai_reply_include_broadcast_comments", False)))
+            self.include_similar_comments_checkbox.setChecked(bool(settings.get("manual_ai_reply_include_similar_comments", True)))
             self._refresh_session_label()
             if self.account_id:
                 self.status_label.setText("保存済み設定を読み込みました")
@@ -230,6 +239,7 @@ class AiReplyWindowDialog(QDialog):
             "manual_ai_reply_output_conditions": self.output_conditions_edit.toPlainText().strip(),
             "manual_ai_reply_include_broadcaster_transcript": self.include_broadcaster_transcript_checkbox.isChecked(),
             "manual_ai_reply_include_broadcast_comments": self.include_all_comments_checkbox.isChecked(),
+            "manual_ai_reply_include_similar_comments": self.include_similar_comments_checkbox.isChecked(),
             "manual_ai_reply_codex_session_id": self.codex_session_id,
         }
 
@@ -289,8 +299,10 @@ class AiReplyWindowDialog(QDialog):
             output_conditions=self.output_conditions_edit.toPlainText(),
             include_broadcaster_transcript=self.include_broadcaster_transcript_checkbox.isChecked(),
             include_all_comments=self.include_all_comments_checkbox.isChecked(),
+            include_similar_past_comments=self.include_similar_comments_checkbox.isChecked(),
             broadcaster_transcript_text=self._broadcaster_transcript_text(),
             broadcast_comments_text=self._broadcast_comments_text(),
+            similar_past_comments_text=self._similar_past_comments_text(),
         )
 
     def _set_generated_prompt(self) -> None:
@@ -336,6 +348,27 @@ class AiReplyWindowDialog(QDialog):
             self._broadcaster_transcript_context = load_broadcaster_transcript_context(self.lv)
         return self._broadcaster_transcript_context
 
+    def _similar_past_comments_text(self) -> str:
+        if not self.include_similar_comments_checkbox.isChecked():
+            return ""
+        if self._similar_comments_context is None:
+            summary = build_target_comment_summary(self.row, self.display_name)
+            with database_session() as conn:
+                initialize_database(conn)
+                context = build_manual_ai_reply_vector_context(
+                    conn,
+                    account_id=self.account_id,
+                    query_text=summary["content"],
+                    current_lv=self.lv,
+                    current_no=summary["no"],
+                    current_content=summary["content"],
+                )
+            self._similar_comments_context = context.text
+            self._similar_comments_result_count = context.result_count
+            self._similar_comments_searched_count = context.searched_count
+            self._similar_comments_search_error = context.error
+        return self._similar_comments_context
+
     def _load_broadcast_rows_from_db(self) -> list[dict[str, Any]]:
         if not self.lv:
             return []
@@ -359,7 +392,18 @@ class AiReplyWindowDialog(QDialog):
             "session_id_before": self.codex_session_id,
             "include_broadcaster_transcript": self.include_broadcaster_transcript_checkbox.isChecked(),
             "include_broadcast_comments": self.include_all_comments_checkbox.isChecked(),
+            "include_similar_comments": self.include_similar_comments_checkbox.isChecked(),
+            "similar_comments_result_count": self._similar_comments_result_count,
+            "similar_comments_searched_count": self._similar_comments_searched_count,
+            "similar_comments_search_error": self._similar_comments_search_error,
         }
+
+    def _handle_similar_comments_toggled(self, _checked: bool) -> None:
+        self._similar_comments_context = None
+        self._similar_comments_result_count = 0
+        self._similar_comments_searched_count = 0
+        self._similar_comments_search_error = ""
+        self._refresh_prompt_if_unedited()
 
     def _update_account_controls_enabled(self) -> None:
         enabled = bool(self.account_id)

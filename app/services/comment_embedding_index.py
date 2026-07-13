@@ -203,6 +203,8 @@ def search_comment_embedding_index(
                 "score": float(scores[int(index)]),
                 "lv": str(item.get("lv") or ""),
                 "user_id": str(item.get("user_id") or ""),
+                "no": str(item.get("no") or ""),
+                "vpos": str(item.get("vpos") or ""),
                 "content": str(item.get("content") or ""),
                 "display_text": str(item.get("display_text") or ""),
             }
@@ -234,6 +236,8 @@ def _fetch_embedding_rows(conn: sqlite3.Connection, *, provider: str, model: str
                 e.embedding_json,
                 n.lv,
                 n.user_id,
+                n.no,
+                n.vpos,
                 n.content,
                 n.display_text
             FROM comment_event_embeddings e
@@ -265,6 +269,8 @@ def _fetch_embedding_row(
             e.embedding_json,
             n.lv,
             n.user_id,
+            n.no,
+            n.vpos,
             n.content,
             n.display_text
         FROM comment_event_embeddings e
@@ -282,6 +288,8 @@ def _metadata_from_row(row: sqlite3.Row) -> dict[str, Any]:
         "normalized_event_id": int(row["normalized_event_id"] or 0),
         "lv": str(row["lv"] or ""),
         "user_id": str(row["user_id"] or ""),
+        "no": str(row["no"] or ""),
+        "vpos": str(row["vpos"] or ""),
         "content": str(row["content"] or text),
         "display_text": str(row["display_text"] or text),
     }

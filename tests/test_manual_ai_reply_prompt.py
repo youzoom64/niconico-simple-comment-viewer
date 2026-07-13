@@ -5,6 +5,7 @@ import unittest
 from app.services.manual_ai_reply_prompt import (
     BROADCASTER_TRANSCRIPT_PLACEHOLDER,
     BROADCAST_COMMENTS_PLACEHOLDER,
+    SIMILAR_PAST_COMMENTS_PLACEHOLDER,
     build_manual_ai_reply_prompt,
     build_target_comment_summary,
 )
@@ -35,8 +36,10 @@ class ManualAiReplyPromptTests(unittest.TestCase):
             comment_count=42,
             include_broadcaster_transcript=True,
             include_all_comments=True,
+            include_similar_past_comments=True,
             broadcaster_transcript_text="- 00:01: 配信者の発言",
             broadcast_comments_text="- No.1 / 視聴者A: コメント本文",
+            similar_past_comments_text="- 1. 放送ID=lv1 / 類似度=0.900: 過去コメント",
         )
 
         self.assertIn("対象コメント", prompt)
@@ -44,8 +47,10 @@ class ManualAiReplyPromptTests(unittest.TestCase):
         self.assertIn("ユーザー名: 視聴者A", prompt)
         self.assertIn("配信者の発言", prompt)
         self.assertIn("コメント本文", prompt)
+        self.assertIn("過去コメント", prompt)
         self.assertNotIn(BROADCASTER_TRANSCRIPT_PLACEHOLDER, prompt)
         self.assertNotIn(BROADCAST_COMMENTS_PLACEHOLDER, prompt)
+        self.assertNotIn(SIMILAR_PAST_COMMENTS_PLACEHOLDER, prompt)
         self.assertIn("アンカー付きで軽く返す", prompt)
         self.assertIn("30文字以内", prompt)
         self.assertIn("本文だけ", prompt)
@@ -55,20 +60,25 @@ class ManualAiReplyPromptTests(unittest.TestCase):
 
         self.assertIn("放送者の文字起こし: 今回は使わない", prompt)
         self.assertIn("放送全体のコメント: 今回は使わない", prompt)
+        self.assertIn("対象アカウントの類似過去コメント: 今回は使わない", prompt)
         self.assertNotIn(BROADCASTER_TRANSCRIPT_PLACEHOLDER, prompt)
         self.assertNotIn(BROADCAST_COMMENTS_PLACEHOLDER, prompt)
+        self.assertNotIn(SIMILAR_PAST_COMMENTS_PLACEHOLDER, prompt)
 
     def test_prompt_marks_checked_context_without_data(self) -> None:
         prompt = build_manual_ai_reply_prompt(
             row={"content": "テスト"},
             include_broadcaster_transcript=True,
             include_all_comments=True,
+            include_similar_past_comments=True,
         )
 
         self.assertIn("[放送者の文字起こし]\n(実データなし)", prompt)
         self.assertIn("[放送全体のコメント]\n(実データなし)", prompt)
+        self.assertIn("[対象アカウントの類似過去コメント]\n(実データなし)", prompt)
         self.assertNotIn(BROADCASTER_TRANSCRIPT_PLACEHOLDER, prompt)
         self.assertNotIn(BROADCAST_COMMENTS_PLACEHOLDER, prompt)
+        self.assertNotIn(SIMILAR_PAST_COMMENTS_PLACEHOLDER, prompt)
 
     def test_prompt_does_not_leak_comment_identity_or_raw_payload(self) -> None:
         prompt = build_manual_ai_reply_prompt(

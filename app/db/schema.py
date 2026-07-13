@@ -4,7 +4,7 @@ import sqlite3
 
 from app.db.profile_presets_schema import backfill_live_user_profile_presets, ensure_live_user_profile_preset_table
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -84,6 +84,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             manual_ai_reply_output_conditions TEXT NOT NULL DEFAULT '',
             manual_ai_reply_include_broadcaster_transcript INTEGER NOT NULL DEFAULT 0,
             manual_ai_reply_include_broadcast_comments INTEGER NOT NULL DEFAULT 0,
+            manual_ai_reply_include_similar_comments INTEGER NOT NULL DEFAULT 1,
             manual_ai_reply_codex_session_id TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -234,6 +235,7 @@ def ensure_live_user_profile_columns(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "live_user_profiles", "manual_ai_reply_output_conditions", "TEXT NOT NULL DEFAULT ''")
     ensure_column(conn, "live_user_profiles", "manual_ai_reply_include_broadcaster_transcript", "INTEGER NOT NULL DEFAULT 0")
     ensure_column(conn, "live_user_profiles", "manual_ai_reply_include_broadcast_comments", "INTEGER NOT NULL DEFAULT 0")
+    ensure_column(conn, "live_user_profiles", "manual_ai_reply_include_similar_comments", "INTEGER NOT NULL DEFAULT 1")
     ensure_column(conn, "live_user_profiles", "manual_ai_reply_codex_session_id", "TEXT NOT NULL DEFAULT ''")
 
 

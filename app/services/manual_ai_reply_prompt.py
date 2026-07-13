@@ -5,6 +5,7 @@ from typing import Any
 
 BROADCASTER_TRANSCRIPT_PLACEHOLDER = "{{BROADCASTER_TRANSCRIPT}}"
 BROADCAST_COMMENTS_PLACEHOLDER = "{{BROADCAST_COMMENTS}}"
+SIMILAR_PAST_COMMENTS_PLACEHOLDER = "{{SIMILAR_PAST_COMMENTS}}"
 DEFAULT_MANUAL_AI_REPLY_PURPOSE = """対象コメントにアンカーした自然な返信を1つ作る
 まだ自動投稿しないので、返信本文だけを確認しやすく出す"""
 DEFAULT_MANUAL_AI_REPLY_OUTPUT_CONDITIONS = """返信本文だけを出す
@@ -36,8 +37,10 @@ def build_manual_ai_reply_prompt(
     output_conditions: str = "",
     include_broadcaster_transcript: bool = False,
     include_all_comments: bool = False,
+    include_similar_past_comments: bool = False,
     broadcaster_transcript_text: str = "",
     broadcast_comments_text: str = "",
+    similar_past_comments_text: str = "",
 ) -> str:
     summary = build_target_comment_summary(row, display_name)
     context_blocks = [
@@ -50,6 +53,14 @@ def build_manual_ai_reply_prompt(
     ]
     context_blocks.append(
         _optional_context_block("放送全体のコメント", include_all_comments, broadcast_comments_text, BROADCAST_COMMENTS_PLACEHOLDER)
+    )
+    context_blocks.append(
+        _optional_context_block(
+            "対象アカウントの類似過去コメント",
+            include_similar_past_comments,
+            similar_past_comments_text,
+            SIMILAR_PAST_COMMENTS_PLACEHOLDER,
+        )
     )
     context_text = "\n\n".join(context_blocks)
     purpose_text = _section_text(purpose, DEFAULT_MANUAL_AI_REPLY_PURPOSE)

@@ -28,6 +28,7 @@ class ManualAiReplySettingsTests(unittest.TestCase):
         self.assertIn("manual_ai_reply_output_conditions", columns)
         self.assertIn("manual_ai_reply_include_broadcaster_transcript", columns)
         self.assertIn("manual_ai_reply_include_broadcast_comments", columns)
+        self.assertIn("manual_ai_reply_include_similar_comments", columns)
         self.assertIn("manual_ai_reply_codex_session_id", columns)
 
     def test_settings_can_be_saved_and_reloaded_per_account(self) -> None:
@@ -40,6 +41,7 @@ class ManualAiReplySettingsTests(unittest.TestCase):
                 "manual_ai_reply_output_conditions": "条件A",
                 "manual_ai_reply_include_broadcaster_transcript": True,
                 "manual_ai_reply_include_broadcast_comments": False,
+                "manual_ai_reply_include_similar_comments": True,
                 "manual_ai_reply_codex_session_id": "019f5c0e-d341-70f3-8fdd-2cef9a31a556",
             },
         )
@@ -50,6 +52,7 @@ class ManualAiReplySettingsTests(unittest.TestCase):
         self.assertEqual("条件A", settings["manual_ai_reply_output_conditions"])
         self.assertTrue(settings["manual_ai_reply_include_broadcaster_transcript"])
         self.assertFalse(settings["manual_ai_reply_include_broadcast_comments"])
+        self.assertTrue(settings["manual_ai_reply_include_similar_comments"])
         self.assertEqual("019f5c0e-d341-70f3-8fdd-2cef9a31a556", settings["manual_ai_reply_codex_session_id"])
 
     def test_profile_upsert_does_not_clear_manual_ai_reply_settings(self) -> None:
@@ -62,6 +65,7 @@ class ManualAiReplySettingsTests(unittest.TestCase):
                 "manual_ai_reply_output_conditions": "条件B",
                 "manual_ai_reply_include_broadcaster_transcript": True,
                 "manual_ai_reply_include_broadcast_comments": True,
+                "manual_ai_reply_include_similar_comments": False,
                 "manual_ai_reply_codex_session_id": "019f5c0e-d341-70f3-8fdd-2cef9a31a556",
             },
         )
@@ -88,6 +92,7 @@ class ManualAiReplySettingsTests(unittest.TestCase):
         self.assertEqual("表示名", profile["display_name"])
         self.assertEqual("目的B", settings["manual_ai_reply_purpose"])
         self.assertEqual("条件B", settings["manual_ai_reply_output_conditions"])
+        self.assertFalse(settings["manual_ai_reply_include_similar_comments"])
         self.assertEqual("019f5c0e-d341-70f3-8fdd-2cef9a31a556", settings["manual_ai_reply_codex_session_id"])
 
     def test_codex_session_id_can_be_updated_without_changing_other_settings(self) -> None:
@@ -100,6 +105,7 @@ class ManualAiReplySettingsTests(unittest.TestCase):
                 "manual_ai_reply_output_conditions": "条件C",
                 "manual_ai_reply_include_broadcaster_transcript": False,
                 "manual_ai_reply_include_broadcast_comments": True,
+                "manual_ai_reply_include_similar_comments": True,
                 "manual_ai_reply_codex_session_id": "",
             },
         )
@@ -110,7 +116,15 @@ class ManualAiReplySettingsTests(unittest.TestCase):
         self.assertEqual("目的C", settings["manual_ai_reply_purpose"])
         self.assertEqual("条件C", settings["manual_ai_reply_output_conditions"])
         self.assertTrue(settings["manual_ai_reply_include_broadcast_comments"])
+        self.assertTrue(settings["manual_ai_reply_include_similar_comments"])
         self.assertEqual("019f5c0e-d341-70f3-8fdd-2cef9a31a556", settings["manual_ai_reply_codex_session_id"])
+
+    def test_missing_profile_defaults_similar_comment_context_to_enabled(self) -> None:
+        conn = self.make_conn()
+
+        settings = get_manual_ai_reply_settings(conn, "new-account")
+
+        self.assertTrue(settings["manual_ai_reply_include_similar_comments"])
 
 
 if __name__ == "__main__":
