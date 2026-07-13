@@ -13,10 +13,11 @@ from app.db.repositories.broadcast_history import (
     count_broadcast_events,
     upsert_broadcast_history,
 )
-from app.db.repositories.events import save_event_rows
+from app.db.repositories.events import save_event_rows_with_ids
 from app.db.schema import initialize_database
 from app.events.models import json_default
 from app.ndgr.results import FetchResult
+from app.services.comment_embedding_queue import enqueue_comment_embeddings
 
 CSV_FIELDS = [
     "source",
@@ -61,7 +62,8 @@ def save_rows(
             writer.writerow({key: row.get(key, "") for key in writer.fieldnames})
     with database_session() as conn:
         initialize_database(conn)
-        db_saved_count = save_event_rows(conn, lv, rows)
+        normalized_event_ids = save_event_rows_with_ids(conn, lv, rows)
+        db_saved_count = len(normalized_event_ids)
         history_metadata = metadata or BroadcastHistoryMetadata(lv=lv)
         upsert_broadcast_history(
             conn,
@@ -72,5 +74,12 @@ def save_rows(
             json_path=json_path,
             csv_path=csv_path,
         )
+    queued_embeddings = enqueue_comment_embeddings(
+        normalized_event_ids,
+        lv=lv,
+        reason=f"{history_mode}_save",
+        log=log,
+    )
     log_result(log, "保存", jsonl=jsonl_path, json=json_path, csv=csv_path, rows=len(rows), db=db_saved_count)
+    log_result(log, "コメントembeddingキュー投入", level="DEBUG", count=queued_embeddings, lv=lv)
     return FetchResult(lv, rows, jsonl_path, json_path, csv_path, db_saved_count, history_metadata)

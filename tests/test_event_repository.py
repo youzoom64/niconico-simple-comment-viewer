@@ -10,6 +10,7 @@ from app.db.repositories.events import (
     list_listener_lvs,
     save_event_row,
     save_event_rows,
+    save_event_rows_with_ids,
 )
 from app.db.schema import initialize_database
 
@@ -55,6 +56,19 @@ class EventRepositoryTests(unittest.TestCase):
         links = [row[0] for row in conn.execute("SELECT raw_event_id FROM normalized_events ORDER BY id")]
         self.assertEqual(2, len(set(links)))
         self.assertTrue(all(link is not None for link in links))
+
+    def test_save_event_rows_with_ids_returns_normalized_event_ids(self) -> None:
+        conn = self.make_connection()
+        rows = [
+            {"source": "backward", "message_id": "1", "kind": "chat", "content": "one"},
+            {"source": "backward", "message_id": "2", "kind": "chat", "content": "two"},
+        ]
+
+        event_ids = save_event_rows_with_ids(conn, "lv1", rows)
+
+        self.assertEqual(2, len(event_ids))
+        self.assertTrue(all(isinstance(event_id, int) for event_id in event_ids))
+        self.assertEqual(2, conn.execute("SELECT COUNT(*) FROM normalized_events").fetchone()[0])
 
     def test_list_events_by_lv_returns_display_rows(self) -> None:
         conn = self.make_connection()

@@ -13,6 +13,7 @@ from app.events.normalizer import chunked_message_to_row
 from app.ndgr.output import save_rows
 from app.ndgr.program_info import enrich_history_metadata, program_info_to_history_metadata
 from app.ndgr.results import FetchResult
+from app.services.comment_embedding_queue import enqueue_comment_embedding
 
 
 class LiveCommentStreamer:
@@ -169,9 +170,17 @@ class LiveCommentStreamer:
         await asyncio.gather(entries_task, *active_segments.values(), return_exceptions=True)
 
     def _save_stream_row(self, row: dict[str, Any]) -> None:
+        normalized_event_id = 0
         try:
             with database_session() as conn:
                 initialize_database(conn)
-                save_event_row(conn, self.lv, row)
+                normalized_event_id = save_event_row(conn, self.lv, row)
         except Exception as exc:
             log_error(self.log, "リアルタイムDB保存失敗", error=f"{type(exc).__name__}: {exc}")
+            return
+        enqueue_comment_embedding(
+            normalized_event_id,
+            lv=self.lv,
+            reason="stream",
+            log=self.log,
+        )

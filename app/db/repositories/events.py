@@ -93,11 +93,14 @@ def save_event_row(conn: sqlite3.Connection, lv: str, row: dict[str, Any]) -> in
 
 
 def save_event_rows(conn: sqlite3.Connection, lv: str, rows: list[dict[str, Any]]) -> int:
-    saved = 0
+    return len(save_event_rows_with_ids(conn, lv, rows))
+
+
+def save_event_rows_with_ids(conn: sqlite3.Connection, lv: str, rows: list[dict[str, Any]]) -> list[int]:
+    normalized_event_ids: list[int] = []
     for row in rows:
-        save_event_row(conn, lv, row)
-        saved += 1
-    return saved
+        normalized_event_ids.append(save_event_row(conn, lv, row))
+    return normalized_event_ids
 
 
 def list_events(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]:

@@ -69,6 +69,7 @@ from app.services.agent_process_watch import register_agent_process_watch
 from app.services.ai_reply import AiReplyHook
 from app.services.auto_profile.persona_summary import load_persona_memo, persona_memo_path
 from app.services.auto_profile.results import auto_profile_result_exists, auto_profile_result_path, load_auto_profile_result
+from app.services.comment_embedding_queue import start_comment_embedding_backfill
 from app.services.comment_post import post_comment
 from app.services.output.output_coordinator import OutputCoordinator
 from app.services.sequence.comment_numbering import CommentNumberIssuer
@@ -377,6 +378,7 @@ class MainWindow(QMainWindow):
         self.obs_control_tab.update_all()
         self.voicevox_pipeline.start()
         self.append_log("INFO", f"VOICEVOX FIFO起動: workers={self.app_config.voicevox_worker_count}")
+        start_comment_embedding_backfill(log=self.voicevox_signals.log.emit)
 
     def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
