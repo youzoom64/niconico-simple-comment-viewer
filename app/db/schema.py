@@ -4,7 +4,7 @@ import sqlite3
 
 from app.db.profile_presets_schema import backfill_live_user_profile_presets, ensure_live_user_profile_preset_table
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 8
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -48,6 +48,21 @@ def create_schema(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(raw_event_id) REFERENCES raw_events(id) ON DELETE SET NULL
         );
 
+        CREATE TABLE IF NOT EXISTS comment_event_embeddings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            normalized_event_id INTEGER NOT NULL,
+            provider TEXT NOT NULL DEFAULT 'ollama',
+            model TEXT NOT NULL,
+            text_hash TEXT NOT NULL,
+            text TEXT NOT NULL,
+            dimension INTEGER NOT NULL,
+            embedding_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(normalized_event_id) REFERENCES normalized_events(id) ON DELETE CASCADE,
+            UNIQUE(normalized_event_id, provider, model)
+        );
+
         CREATE TABLE IF NOT EXISTS live_user_profiles (
             user_id TEXT PRIMARY KEY,
             display_name TEXT,
@@ -65,6 +80,11 @@ def create_schema(conn: sqlite3.Connection) -> None:
             voicevox_style TEXT,
             icon_path TEXT,
             icon_source TEXT,
+            manual_ai_reply_purpose TEXT NOT NULL DEFAULT '',
+            manual_ai_reply_output_conditions TEXT NOT NULL DEFAULT '',
+            manual_ai_reply_include_broadcaster_transcript INTEGER NOT NULL DEFAULT 0,
+            manual_ai_reply_include_broadcast_comments INTEGER NOT NULL DEFAULT 0,
+            manual_ai_reply_codex_session_id TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
@@ -160,6 +180,10 @@ def create_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_raw_events_lv_kind ON raw_events(lv, event_kind);
         CREATE INDEX IF NOT EXISTS idx_normalized_events_lv_kind ON normalized_events(lv, event_kind);
         CREATE INDEX IF NOT EXISTS idx_normalized_events_user_id ON normalized_events(user_id);
+        CREATE INDEX IF NOT EXISTS idx_comment_event_embeddings_event
+            ON comment_event_embeddings(normalized_event_id);
+        CREATE INDEX IF NOT EXISTS idx_comment_event_embeddings_model
+            ON comment_event_embeddings(provider, model);
         CREATE INDEX IF NOT EXISTS idx_live_user_profile_skins_user_id
             ON live_user_profile_skins(user_id, slot);
         CREATE INDEX IF NOT EXISTS idx_live_user_profile_presets_user_id
@@ -188,6 +212,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
     backfill_live_user_profile_presets(conn)
     ensure_event_kind_preset_columns(conn)
     ensure_broadcast_history_columns(conn)
+    ensure_comment_event_embedding_table(conn)
 
 
 def ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
@@ -205,6 +230,11 @@ def ensure_live_user_profile_columns(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "live_user_profiles", "display_name_locked", "INTEGER NOT NULL DEFAULT 0")
     ensure_column(conn, "live_user_profiles", "icon_path", "TEXT")
     ensure_column(conn, "live_user_profiles", "icon_source", "TEXT")
+    ensure_column(conn, "live_user_profiles", "manual_ai_reply_purpose", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "live_user_profiles", "manual_ai_reply_output_conditions", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "live_user_profiles", "manual_ai_reply_include_broadcaster_transcript", "INTEGER NOT NULL DEFAULT 0")
+    ensure_column(conn, "live_user_profiles", "manual_ai_reply_include_broadcast_comments", "INTEGER NOT NULL DEFAULT 0")
+    ensure_column(conn, "live_user_profiles", "manual_ai_reply_codex_session_id", "TEXT NOT NULL DEFAULT ''")
 
 
 def ensure_live_user_profile_skin_table(conn: sqlite3.Connection) -> None:
@@ -350,6 +380,39 @@ def ensure_broadcast_history_columns(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "broadcast_history", "last_jsonl_path", "TEXT")
     ensure_column(conn, "broadcast_history", "last_json_path", "TEXT")
     ensure_column(conn, "broadcast_history", "last_csv_path", "TEXT")
+
+
+def ensure_comment_event_embedding_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS comment_event_embeddings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            normalized_event_id INTEGER NOT NULL,
+            provider TEXT NOT NULL DEFAULT 'ollama',
+            model TEXT NOT NULL,
+            text_hash TEXT NOT NULL,
+            text TEXT NOT NULL,
+            dimension INTEGER NOT NULL,
+            embedding_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(normalized_event_id) REFERENCES normalized_events(id) ON DELETE CASCADE,
+            UNIQUE(normalized_event_id, provider, model)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_comment_event_embeddings_event
+            ON comment_event_embeddings(normalized_event_id)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_comment_event_embeddings_model
+            ON comment_event_embeddings(provider, model)
+        """
+    )
 
 
 def seed_default_rules(conn: sqlite3.Connection) -> None:

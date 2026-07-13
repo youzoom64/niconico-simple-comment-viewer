@@ -70,6 +70,7 @@ class AppConfig:
     youtube_chrome_profile: str = ""
     rtfw_base_url: str = "http://127.0.0.1:8801"
     rtfw_overlay_url: str = "http://127.0.0.1:8788/overlay"
+    voice_transcript_auto_broadcasters: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -139,6 +140,7 @@ class AppConfig:
             "youtube_chrome_profile": str(data.get("youtube_chrome_profile") or ""),
             "rtfw_base_url": str(data.get("rtfw_base_url") or "http://127.0.0.1:8801"),
             "rtfw_overlay_url": str(data.get("rtfw_overlay_url") or "http://127.0.0.1:8788/overlay"),
+            "voice_transcript_auto_broadcasters": str(data.get("voice_transcript_auto_broadcasters") or ""),
         }
         extra = {key: value for key, value in data.items() if key not in known}
         return cls(**known, extra=extra)
@@ -209,6 +211,7 @@ class AppConfig:
             "youtube_chrome_profile": self.youtube_chrome_profile,
             "rtfw_base_url": self.rtfw_base_url,
             "rtfw_overlay_url": self.rtfw_overlay_url,
+            "voice_transcript_auto_broadcasters": self.voice_transcript_auto_broadcasters,
             **self.extra,
         }
 

@@ -79,6 +79,7 @@ class CommentPage(QWidget):
         self.rows: list[dict[str, Any]] = []
         self.current_lv = ""
         self.program_title = ""
+        self.broadcaster_id = ""
         self.broadcaster_name = ""
         self.close_requested = False
         self.comments_auto_scroll = True
@@ -93,6 +94,10 @@ class CommentPage(QWidget):
 
         self.lv_input = QLineEdit()
         self.lv_input.setPlaceholderText("lv350000000 または https://live.nicovideo.jp/watch/lv...")
+        self.open_broadcast_button = QPushButton("放送ページ")
+        self.open_broadcast_button.setEnabled(False)
+        self.open_broadcaster_button = QPushButton("放送者ページ")
+        self.open_broadcaster_button.setEnabled(False)
         self.connect_button = QPushButton("接続")
         self.fetch_button = QPushButton("全件取得")
         self.cancel_button = QPushButton("停止")
@@ -102,6 +107,8 @@ class CommentPage(QWidget):
         self.obs_output_checkbox = QCheckBox("OBS")
         self.obs_output_checkbox.setToolTip("OBSスキン/フォント")
         self.obs_output_checkbox.setChecked(True)
+        self.voice_transcript_link_checkbox = QCheckBox("文字起こし紐づけ")
+        self.voice_transcript_link_checkbox.setToolTip("この放送タブの文字起こしを放送別CSVへ保存する")
         self.trace_checkbox = QCheckBox("TRACEで各メッセージもログ")
         self.level_combo = QComboBox()
         self.level_combo.addItems(["INFO", "DEBUG", "TRACE", "WARN", "ERROR"])
@@ -113,8 +120,11 @@ class CommentPage(QWidget):
         address_row = QHBoxLayout()
         address_row.addWidget(QLabel("放送"))
         address_row.addWidget(self.lv_input, 1)
+        address_row.addWidget(self.open_broadcast_button)
+        address_row.addWidget(self.open_broadcaster_button)
         address_row.addWidget(self.read_aloud_checkbox)
         address_row.addWidget(self.obs_output_checkbox)
+        address_row.addWidget(self.voice_transcript_link_checkbox)
         address_row.addWidget(self.connect_button)
         address_row.addWidget(self.cancel_button)
         address_row.addWidget(self.fetch_button)
@@ -158,6 +168,8 @@ class CommentPage(QWidget):
 
         for control in (
             self.lv_input,
+            self.open_broadcast_button,
+            self.open_broadcaster_button,
             self.connect_button,
             self.cancel_button,
             self.fetch_button,
@@ -165,6 +177,7 @@ class CommentPage(QWidget):
             self.trace_checkbox,
             self.read_aloud_checkbox,
             self.obs_output_checkbox,
+            self.voice_transcript_link_checkbox,
             self.comment_input,
             self.comment_anonymous_checkbox,
             self.comment_send_button,

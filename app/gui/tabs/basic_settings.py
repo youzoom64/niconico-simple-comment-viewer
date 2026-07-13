@@ -119,6 +119,9 @@ class BasicSettingsTab(QWidget):
         self.youtube_chrome_profile_input = NoWheelComboBox()
         allow_combo_shrink(self.youtube_chrome_profile_input)
         self.youtube_reload_profiles_button = QPushButton("再読込")
+        self.voice_transcript_auto_broadcasters_input = QTextEdit()
+        self.voice_transcript_auto_broadcasters_input.setPlaceholderText("放送者IDまたは放送者名を1行1件で入力。例:\n12345678\n配信者名")
+        self.voice_transcript_auto_broadcasters_input.setFixedHeight(120)
         self.save_button = QPushButton("保存")
         self.status_label = QLabel("")
         self.list_auto_save_timer = QTimer(self)
@@ -135,6 +138,7 @@ class BasicSettingsTab(QWidget):
         tabs.addTab(self._build_speed_tab(), "再生速度")
         tabs.addTab(self._build_list_overlay_tab(), "通常リスト")
         tabs.addTab(self._build_ai_reply_tab(), "AI返信")
+        tabs.addTab(self._build_voice_transcript_tab(), "文字起こし")
         tabs.addTab(self._build_tag_change_tab(), "タグ変更")
         tabs.addTab(self._build_youtube_accept_tab(), "YouTube受付")
         buttons = QHBoxLayout()
@@ -217,6 +221,19 @@ class BasicSettingsTab(QWidget):
         form.addRow("Codex model", self.ai_reply_model_input)
         form.addRow("Codex effort", self.ai_reply_effort_input)
         note = QLabel("キーワード一致、または接頭辞で始まるコメントにCodexで返信を作り、同じセッション履歴を保存して投稿する。")
+        note.setWordWrap(True)
+        layout = QVBoxLayout()
+        layout.addLayout(form)
+        layout.addWidget(note)
+        layout.addStretch(1)
+        widget = QWidget()
+        widget.setLayout(layout)
+        return widget
+
+    def _build_voice_transcript_tab(self) -> QWidget:
+        form = QFormLayout()
+        form.addRow("自動紐づけ放送者", self.voice_transcript_auto_broadcasters_input)
+        note = QLabel("ここに設定した放送者IDまたは放送者名に一致した現在放送中タブは、「文字起こし紐づけ」が自動ONになる。手動ON/OFFは各放送タブのチェックボックスで行う。")
         note.setWordWrap(True)
         layout = QVBoxLayout()
         layout.addLayout(form)
@@ -367,6 +384,7 @@ class BasicSettingsTab(QWidget):
             self.tag_change_timeout_input.setValue(float(config.tag_change_timeout_seconds))
             self.youtube_accept_enabled_input.setChecked(bool(config.youtube_accept_enabled))
             self.reload_youtube_chrome_profiles(config.youtube_chrome_profile or config.tag_change_chrome_profile)
+            self.voice_transcript_auto_broadcasters_input.setPlainText(config.voice_transcript_auto_broadcasters)
         finally:
             self.loading_config = False
 
@@ -521,6 +539,7 @@ class BasicSettingsTab(QWidget):
                 "tag_change_chrome_profile": self.current_tag_change_chrome_profile(),
                 "youtube_accept_enabled": self.youtube_accept_enabled_input.isChecked(),
                 "youtube_chrome_profile": self.current_youtube_chrome_profile(),
+                "voice_transcript_auto_broadcasters": self.voice_transcript_auto_broadcasters_input.toPlainText().strip(),
             }
         )
         self.config = AppConfig.from_dict(data)

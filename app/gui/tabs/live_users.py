@@ -31,7 +31,7 @@ from app.gui.common.font_combo import FontFamilyCombo
 from app.gui.common.github_skin_picker import SkinPreviewButton, select_github_skin
 from app.gui.common.presentation_presets import presentation_preset_label
 from app.gui.common.scroll_guard import capture_scroll, restore_scroll
-from app.gui.common.table_state import configure_table_header, connect_persistent_table_state, restore_persistent_table_state
+from app.gui.common.table_state import configure_table_header, connect_persistent_table_state, restore_persistent_table_state, restore_table_state
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
 from app.gui.user_icons import cached_user_icon
 from app.settings.store import JsonSettingsStore
@@ -40,6 +40,19 @@ from app.settings.ui_state import UiStateStore
 
 FONT_SIZE_OPTIONS = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 44, 48, 56, 64, 72, 84, 96]
 TABLE_STATE_KEY = "live_users_columns_v4"
+DEFAULT_TABLE_STATE = {
+    "widths": [40, 46, 38, 54, 104, 72, 110, 170, 65, 540, 170, 90, 130, 190],
+    "header": (
+        "000000ff00000000000000010000000100000000000000000e000000000000000100000002000000030000000400000005"
+        "000000060000000800000007000000090000000a0000000b0000000c0000000d0000000e000000000000000100000002"
+        "000000030000000400000005000000060000000800000007000000090000000a0000000b0000000c0000000d00000000"
+        "000000000000071b0000000e0101010000000000000000000000000064ffffffff00000084000000000000000e000000"
+        "2800000001000000000000002e0000000100000000000000260000000100000000000000360000000100000000000000"
+        "6800000001000000000000004800000001000000000000006e0000000100000000000000410000000100000000000000"
+        "aa00000001000000000000021c0000000100000000000000aa00000001000000000000005a0000000100000000000000"
+        "820000000100000000000000be0000000100000000000003e8000000000000000000000000000000000000000001"
+    ),
+}
 
 
 class LiveUsersTab(QWidget):
@@ -75,7 +88,8 @@ class LiveUsersTab(QWidget):
         self.table = QTableWidget(0, len(self.columns))
         self.table.setIconSize(QSize(32, 32))
         self.table.setHorizontalHeaderLabels([label for _key, label in self.columns])
-        configure_table_header(self.table, [70, 90, 80, 100, 170, 72, 180, 170, 100, 540, 170, 90, 130, 190])
+        configure_table_header(self.table, DEFAULT_TABLE_STATE["widths"])
+        restore_table_state(self.table, DEFAULT_TABLE_STATE)
         restore_persistent_table_state(self.table, self.ui_state_store, TABLE_STATE_KEY)
         connect_persistent_table_state(self.table, self.ui_state_store, TABLE_STATE_KEY)
         install_table_copy_menu(self.table, self.row_data_for_menu)

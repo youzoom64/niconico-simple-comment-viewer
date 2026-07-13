@@ -48,6 +48,7 @@ from app.gui.auto_profile_worker import AutoProfileWorker
 from app.gui.comment_page import COMMENT_TABLE_COLUMNS, COMMENT_TABLE_STATE_KEY, CommentPage
 from app.gui.persona_summary_worker import PersonaSummaryWorker
 from app.gui.dialogs.account_profile import AccountProfileDialog
+from app.gui.dialogs.ai_reply_window import AiReplyWindowDialog
 from app.gui.dialogs.auto_profile_result import AutoProfileResultDialog
 from app.gui.dialogs.listener_history import ListenerHistoryDialog
 from app.gui.error_text import summarize_error_for_dialog, wrap_error_details
@@ -75,6 +76,7 @@ from app.services.speech_synthesis.fifo_pipeline import VoicevoxFifoPipeline
 from app.services.speech_synthesis.job_factory import build_comment_event, build_voicevox_submission, render_profile_from_plan
 from app.services.speech_synthesis.voicevox_engine_adapter import build_voicevox_synthesizer
 from app.services.tag_change import TagOperation, change_live_tags, decide_tag_change
+from app.services.voice_transcript_csv import VoiceTranscriptCsvRecorder, is_user_voice_source, matches_auto_broadcaster
 from app.services.youtube_accept import YouTubeVideo, find_first_youtube_video
 from app.services.youtube_selenium import YouTubeSeleniumResult, open_youtube_video
 from app.settings.ui_state import UiStateStore
@@ -306,11 +308,14 @@ class MainWindow(QMainWindow):
         self.voicevox_signals.log.connect(self.handle_log)
         self.overlay_server = LiveOverlayServer()
         self.ai_reply_hook = AiReplyHook(self.app_config, self.voicevox_signals.log.emit)
+        self.voice_transcript_recorder = VoiceTranscriptCsvRecorder()
+        self.voice_transcript_page: CommentPage | None = None
         self.voicevox_pipeline = self.create_voicevox_pipeline()
         self.reload_profile_display_names()
 
         self.tag_change_threads: list[QThread] = []
         self.listener_history_dialogs: list[ListenerHistoryDialog] = []
+        self.ai_reply_dialogs: list[AiReplyWindowDialog] = []
         self.auto_profile_thread: QThread | None = None
         self.auto_profile_worker: AutoProfileWorker | None = None
         self.persona_summary_thread: QThread | None = None
@@ -352,6 +357,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.obs_control_tab, "OBS連携")
         self.rtfw_control_tab = RtfwControlTab(self.settings_store, self.app_config)
         self.rtfw_control_tab.config_saved.connect(self.apply_basic_config)
+        self.rtfw_control_tab.websocket.textMessageReceived.connect(self.handle_rtfw_transcript_csv_event)
         self.tabs.addTab(self.rtfw_control_tab, "リアルタイム字幕")
         self.setCentralWidget(self.tabs)
 
@@ -389,9 +395,12 @@ class MainWindow(QMainWindow):
             return self.current_comment_page()
         page = CommentPage(title or f"放送{len(self.comment_pages) + 1}")
         page.connect_button.clicked.connect(lambda _checked=False, p=page: self.start_stream(p))
+        page.open_broadcast_button.clicked.connect(lambda _checked=False, p=page: self.open_broadcast_page(p))
+        page.open_broadcaster_button.clicked.connect(lambda _checked=False, p=page: self.open_broadcaster_page(p))
         page.fetch_button.clicked.connect(lambda _checked=False, p=page: self.start_fetch(p))
         page.cancel_button.clicked.connect(lambda _checked=False, p=page: self.cancel_fetch(p))
-        page.lv_input.textChanged.connect(lambda _text, p=page: self.update_comment_send_enabled(p))
+        page.lv_input.textChanged.connect(lambda _text, p=page: self.update_comment_page_controls(p))
+        page.voice_transcript_link_checkbox.toggled.connect(lambda checked, p=page: self.handle_voice_transcript_link_toggled(p, checked))
         page.comment_input.textChanged.connect(lambda _text, p=page: self.update_comment_send_enabled(p))
         page.comment_input.returnPressed.connect(lambda p=page: self.send_comment_from_input(p))
         page.comment_send_button.clicked.connect(lambda _checked=False, p=page: self.send_comment_from_input(p))
@@ -402,6 +411,10 @@ class MainWindow(QMainWindow):
             page.table,
             lambda row_index, p=page: self.row_data_for_menu(p, row_index),
             [
+                TableContextAction(
+                    "AIの返信ウインドウを開く",
+                    lambda row, row_index, column_index, p=page: self.open_ai_reply_window_from_row(p, row, row_index, column_index),
+                ),
                 TableContextAction(
                     "このリスナーの過去コメントを開く",
                     lambda row, row_index, column_index, p=page: self.open_listener_history_from_row(p, row, row_index, column_index),
@@ -495,11 +508,15 @@ class MainWindow(QMainWindow):
         metadata: BroadcastHistoryMetadata | None = None,
     ) -> None:
         title = (metadata.title if metadata else "") or ""
+        broadcaster_id = (metadata.broadcaster_id if metadata else "") or ""
         broadcaster = (metadata.broadcaster_name if metadata else "") or ""
         page.program_title = title.strip()
+        page.broadcaster_id = broadcaster_id.strip()
         page.broadcaster_name = broadcaster.strip()
         page.broadcaster_label.setText(f"放送者: {page.broadcaster_name or '-'}")
         page.program_title_label.setText(f"タイトル: {page.program_title or '-'}")
+        self.apply_voice_transcript_auto_link(page)
+        self.update_comment_page_controls(page)
         self.update_comment_tab_text(page)
 
     def update_comment_tab_text(self, page: CommentPage) -> None:
@@ -600,6 +617,7 @@ class MainWindow(QMainWindow):
         if page.thread:
             page.thread.quit()
             page.thread.wait(3000)
+        self.stop_voice_transcript_csv(page, "放送タブ停止")
         page.thread = None
         page.worker = None
         if page.comment_post_thread:
@@ -708,6 +726,7 @@ class MainWindow(QMainWindow):
             self.voicevox_pipeline = self.create_voicevox_pipeline()
             self.voicevox_pipeline.start()
             self.append_log("INFO", f"VOICEVOX FIFO再起動: workers={self.app_config.voicevox_worker_count}")
+        self.apply_voice_transcript_auto_links()
         self.append_log("INFO", f"基本読み上げ設定を保存: enabled={self.app_config.default_read_aloud_enabled} style={self.app_config.default_voicevox_style or 'none'}")
 
     def should_show_log(self, level: str, page: CommentPage | None = None) -> bool:
@@ -752,6 +771,8 @@ class MainWindow(QMainWindow):
         page.connect_button.setEnabled(False)
         page.fetch_button.setEnabled(False)
         page.cancel_button.setEnabled(True)
+        if mode == "stream" and page.voice_transcript_link_checkbox.isChecked():
+            self.start_voice_transcript_csv(page, lv)
 
         page.thread = QThread()
         page.worker = FetchWorker(lv, page.trace_checkbox.isChecked(), mode)
@@ -765,6 +786,82 @@ class MainWindow(QMainWindow):
         page.worker.finished.connect(lambda _result, p=page: self.cleanup_worker(p))
         page.worker.failed.connect(lambda _message, p=page: self.cleanup_worker(p))
         page.thread.start()
+
+    def start_voice_transcript_csv(self, page: CommentPage, lv: str) -> None:
+        if self.voice_transcript_page is page and self.voice_transcript_recorder.lv == lv:
+            return
+        if self.voice_transcript_page is not None and self.voice_transcript_page is not page:
+            self.stop_voice_transcript_csv(self.voice_transcript_page, "別放送へ切替")
+        try:
+            path = self.voice_transcript_recorder.start(lv)
+        except ValueError as exc:
+            self.append_log("ERROR", f"文字起こしCSV保存開始失敗: {exc}", page)
+            self.voice_transcript_page = None
+            return
+        self.voice_transcript_page = page
+        self.append_log("INFO", f"文字起こしCSV保存待機: {path}", page)
+
+    def handle_voice_transcript_link_toggled(self, page: CommentPage, checked: bool) -> None:
+        if checked:
+            if page.current_lv and page.worker is not None and getattr(page.worker, "mode", "") == "stream":
+                self.start_voice_transcript_csv(page, page.current_lv)
+            return
+        self.stop_voice_transcript_csv(page, "文字起こし紐づけOFF")
+
+    def should_auto_link_voice_transcript(self, page: CommentPage) -> bool:
+        return matches_auto_broadcaster(
+            self.app_config.voice_transcript_auto_broadcasters,
+            broadcaster_id=page.broadcaster_id,
+            broadcaster_name=page.broadcaster_name,
+        )
+
+    def apply_voice_transcript_auto_link(self, page: CommentPage) -> None:
+        if not self.should_auto_link_voice_transcript(page):
+            return
+        if not page.voice_transcript_link_checkbox.isChecked():
+            page.voice_transcript_link_checkbox.setChecked(True)
+            self.append_log("INFO", f"文字起こし紐づけを自動ON: {page.broadcaster_name or page.broadcaster_id or page.current_lv}", page)
+
+    def apply_voice_transcript_auto_links(self) -> None:
+        for page in self.comment_pages:
+            self.apply_voice_transcript_auto_link(page)
+
+    def stop_voice_transcript_csv(self, page: CommentPage, reason: str) -> None:
+        if self.voice_transcript_page is not page:
+            return
+        path = self.voice_transcript_recorder.path
+        self.voice_transcript_recorder.stop()
+        self.voice_transcript_page = None
+        if page.voice_transcript_link_checkbox.isChecked():
+            page.voice_transcript_link_checkbox.blockSignals(True)
+            page.voice_transcript_link_checkbox.setChecked(False)
+            page.voice_transcript_link_checkbox.blockSignals(False)
+        suffix = f": {path}" if path is not None else ""
+        self.append_log("INFO", f"文字起こしCSV保存停止（{reason}）{suffix}", page)
+
+    def update_voice_transcript_vpos(self, page: CommentPage, row: dict[str, Any]) -> None:
+        if self.voice_transcript_page is page:
+            self.voice_transcript_recorder.update_vpos(row.get("vpos"))
+
+    def handle_rtfw_transcript_csv_event(self, raw: str) -> None:
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(payload, dict) or payload.get("type") != "transcript.final":
+            return
+        if not is_user_voice_source(payload.get("source")):
+            return
+        text = str(payload.get("text") or "").strip()
+        if not text or self.voice_transcript_page is None:
+            return
+        vpos = payload.get("vpos")
+        if vpos is None or vpos == "":
+            vpos = payload.get("broadcast_vpos")
+        try:
+            self.voice_transcript_recorder.append(text, vpos=None if vpos is None or vpos == "" else vpos)
+        except Exception as exc:
+            self.append_log("ERROR", f"文字起こしCSV保存失敗: {type(exc).__name__}: {exc}", self.voice_transcript_page)
 
     def cancel_fetch(self, page: CommentPage | None = None) -> None:
         target = page or self.current_comment_page()
@@ -799,6 +896,7 @@ class MainWindow(QMainWindow):
 
     def cleanup_worker(self, page: CommentPage) -> None:
         should_close = page.close_requested
+        self.stop_voice_transcript_csv(page, "コメント接続終了")
         page.connect_button.setEnabled(True)
         page.fetch_button.setEnabled(True)
         page.cancel_button.setEnabled(False)
@@ -819,6 +917,44 @@ class MainWindow(QMainWindow):
         live_text = (target.lv_input.text() or target.current_lv).strip()
         can_send = bool(live_text) and bool(target.comment_input.text().strip()) and target.comment_post_thread is None
         target.comment_send_button.setEnabled(can_send)
+
+    def update_comment_page_controls(self, page: CommentPage | None = None) -> None:
+        target = page or self.current_comment_page()
+        self.update_comment_send_enabled(target)
+        target.open_broadcast_button.setEnabled(bool(self.broadcast_page_url_from_page(target)))
+        target.open_broadcaster_button.setEnabled(bool(self.broadcaster_page_url_from_page(target)))
+
+    def broadcast_page_url_from_page(self, page: CommentPage) -> str:
+        text = (page.lv_input.text() or page.current_lv).strip()
+        if not text:
+            return ""
+        try:
+            lv = extract_lv(text)
+        except ValueError:
+            return ""
+        return f"https://live.nicovideo.jp/watch/{lv}"
+
+    def broadcaster_page_url_from_page(self, page: CommentPage) -> str:
+        broadcaster_id = str(page.broadcaster_id or "").strip()
+        if not broadcaster_id:
+            return ""
+        return f"https://www.nicovideo.jp/user/{broadcaster_id}"
+
+    def open_broadcast_page(self, page: CommentPage | None = None) -> None:
+        target = page or self.current_comment_page()
+        url = self.broadcast_page_url_from_page(target)
+        if not url:
+            QMessageBox.information(self, "放送IDなし", "開ける放送IDがありません")
+            return
+        QDesktopServices.openUrl(QUrl(url))
+
+    def open_broadcaster_page(self, page: CommentPage | None = None) -> None:
+        target = page or self.current_comment_page()
+        url = self.broadcaster_page_url_from_page(target)
+        if not url:
+            QMessageBox.information(self, "放送者IDなし", "放送者IDを取得してから開けます")
+            return
+        QDesktopServices.openUrl(QUrl(url))
 
     def send_comment_from_input(self, page: CommentPage | None = None) -> None:
         target = page or self.current_comment_page()
@@ -866,6 +1002,7 @@ class MainWindow(QMainWindow):
         should_follow_bottom = page.comments_auto_scroll
         self.anonymous_184_display_name(page, row, persist=True)
         page.rows.append(row)
+        self.update_voice_transcript_vpos(page, row)
         sorting_enabled = page.table.isSortingEnabled()
         page.table.setSortingEnabled(False)
         try:
@@ -1325,6 +1462,28 @@ class MainWindow(QMainWindow):
 
     def row_has_listener_page(self, row: dict[str, Any], _row_index: int, _column_index: int) -> bool:
         return bool(self.niconico_user_id_from_row(row))
+
+    def open_ai_reply_window_from_row(self, page: CommentPage, row: dict[str, Any], _row_index: int, _column_index: int) -> None:
+        dialog = AiReplyWindowDialog(
+            row=row,
+            account_id=self.account_id_from_row(row),
+            display_name=self.display_name_from_row(row, page),
+            lv=page.current_lv,
+            program_title=page.program_title,
+            broadcaster_name=page.broadcaster_name,
+            broadcaster_id=page.broadcaster_id,
+            comment_count=len(page.rows),
+            parent=self,
+        )
+        self.ai_reply_dialogs.append(dialog)
+        dialog.finished.connect(lambda _result, d=dialog: self.discard_ai_reply_dialog(d))
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    def discard_ai_reply_dialog(self, dialog: AiReplyWindowDialog) -> None:
+        if dialog in self.ai_reply_dialogs:
+            self.ai_reply_dialogs.remove(dialog)
 
     def open_persona_memo_from_row(self, page: CommentPage, row: dict[str, Any], _row_index: int, _column_index: int) -> None:
         identity = resolve_listener_identity(row)
