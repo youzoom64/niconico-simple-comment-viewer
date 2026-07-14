@@ -11,6 +11,8 @@ data/
 *.db
 *.sqlite
 *.sqlite3
+/tmp_stdout.txt
+/tmp_stderr.txt
 
 .env
 config.json
