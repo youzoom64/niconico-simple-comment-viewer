@@ -32,6 +32,7 @@ def snapshot(state: RvcRuntimeState = RvcRuntimeState.OFF) -> RvcRuntimeSnapshot
         active_model=RvcModel(1, "Tsukuyomi-chan v2 Official", True),
         audio_inputs=(RvcAudioDevice("1", "Physical Mic", True),),
         audio_outputs=(RvcAudioDevice("25", "CABLE Input", False),),
+        obs_connected=True,
         obs_inputs=(
             ObsAudioInput(
                 "マイク",
@@ -160,6 +161,38 @@ def test_rvc_device_ids_restore_after_gui_recreation_without_auto_start(tmp_path
     finally:
         restored.shutdown()
         restored.deleteLater()
+        app.processEvents()
+
+
+def test_obs_disconnected_hides_saved_guids_and_disables_obs_controls(tmp_path: Path) -> None:
+    app = QApplication.instance() or QApplication([])
+    store = JsonSettingsStore(tmp_path / "config.json")
+    store.save_dict(
+        {
+            "rvc": {
+                "obs_input_name": "マイク",
+                "obs_off_device_id": "physical-guid",
+                "obs_on_device_id": "cable-guid",
+            }
+        }
+    )
+    tab = RvcControlTab(store, AppConfig(), auto_connect=False)
+    try:
+        tab.apply_snapshot(replace(snapshot(), obs_connected=False, obs_inputs=(), obs_current_device_id=""))
+
+        assert tab.obs_source_combo.currentText() == "OBS未接続"
+        assert tab.obs_off_combo.currentText() == "OBS未接続"
+        assert tab.obs_on_combo.currentText() == "OBS未接続"
+        assert not tab.obs_source_combo.isEnabled()
+        assert not tab.obs_off_combo.isEnabled()
+        assert not tab.obs_on_combo.isEnabled()
+        raw = store.load_dict()["rvc"]
+        assert raw["obs_input_name"] == "マイク"
+        assert raw["obs_off_device_id"] == "physical-guid"
+        assert raw["obs_on_device_id"] == "cable-guid"
+    finally:
+        tab.shutdown()
+        tab.deleteLater()
         app.processEvents()
 
 

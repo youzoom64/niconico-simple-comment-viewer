@@ -61,6 +61,7 @@ class RvcRuntimeSnapshot:
     active_model: RvcModel | None
     audio_inputs: tuple[RvcAudioDevice, ...]
     audio_outputs: tuple[RvcAudioDevice, ...]
+    obs_connected: bool
     obs_inputs: tuple[ObsAudioInput, ...]
     obs_current_device_id: str
     obs_streaming: bool
@@ -125,6 +126,7 @@ class RvcRuntimeController:
         self._active_model: RvcModel | None = None
         self._audio_inputs: tuple[RvcAudioDevice, ...] = ()
         self._audio_outputs: tuple[RvcAudioDevice, ...] = ()
+        self._obs_connected = False
         self._obs_inputs: tuple[ObsAudioInput, ...] = ()
         self._obs_current_device_id = ""
         self._obs_activity = ObsOutputActivity(False, False)
@@ -148,6 +150,7 @@ class RvcRuntimeController:
             active_model=self._active_model,
             audio_inputs=self._audio_inputs,
             audio_outputs=self._audio_outputs,
+            obs_connected=self._obs_connected,
             obs_inputs=self._obs_inputs,
             obs_current_device_id=self._obs_current_device_id,
             obs_streaming=self._obs_activity.streaming,
@@ -199,13 +202,18 @@ class RvcRuntimeController:
             errors.append(self._short_error(exc))
 
         if refresh_obs:
+            self._obs_connected = False
             try:
                 obs = self.obs_factory(obs_access)
                 self._obs_inputs = tuple(obs.list_inputs())
+                self._obs_connected = True
                 self._obs_activity = obs.activity()
                 selected = next((item for item in self._obs_inputs if item.name == settings.obs_input_name), None)
                 self._obs_current_device_id = selected.current_device_id if selected else ""
             except Exception as exc:
+                if not self._obs_connected:
+                    self._obs_inputs = ()
+                    self._obs_current_device_id = ""
                 errors.append(f"OBS: {self._short_error(exc)}")
 
         if direct:
@@ -241,7 +249,7 @@ class RvcRuntimeController:
         if refresh_obs or ensure_main:
             self.log(
                 "INFO",
-                f"RVC再読込: worker={self._worker_ok} main={self._main_connected} obs={bool(self._obs_inputs)}",
+                f"RVC再読込: worker={self._worker_ok} main={self._main_connected} obs={self._obs_connected}",
             )
         return self.snapshot()
 

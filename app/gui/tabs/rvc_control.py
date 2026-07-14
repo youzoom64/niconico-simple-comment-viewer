@@ -362,8 +362,8 @@ class RvcControlTab(QWidget):
         self.snapshot = snapshot
         self._loading = True
         try:
-            self._populate_obs_sources(snapshot.obs_inputs)
-            self._populate_obs_devices(snapshot.obs_inputs)
+            self._populate_obs_sources(snapshot.obs_inputs, connected=snapshot.obs_connected)
+            self._populate_obs_devices(snapshot.obs_inputs, connected=snapshot.obs_connected)
             self._populate_audio_devices(snapshot)
             self._populate_models(snapshot)
         finally:
@@ -399,14 +399,21 @@ class RvcControlTab(QWidget):
         self._update_controls()
 
 
-    def _populate_obs_sources(self, inputs: tuple[ObsAudioInput, ...]) -> None:
+    def _populate_obs_sources(self, inputs: tuple[ObsAudioInput, ...], *, connected: bool = True) -> None:
         current = self.settings.obs_input_name or str(current_dropdown_value(self.obs_source_combo) or "")
+        if not connected:
+            self._replace_combo(self.obs_source_combo, [("OBS未接続", current)], current)
+            return
         items = [(f"{item.name}（{item.kind}）", item.name) for item in inputs]
         values = {value for _label, value in items}
         selected = current if current in values else (next((item.name for item in inputs if item.name == "マイク"), inputs[0].name) if inputs else "")
         self._replace_combo(self.obs_source_combo, items, selected)
 
-    def _populate_obs_devices(self, inputs: tuple[ObsAudioInput, ...]) -> None:
+    def _populate_obs_devices(self, inputs: tuple[ObsAudioInput, ...], *, connected: bool = True) -> None:
+        if not connected:
+            self._replace_combo(self.obs_off_combo, [("OBS未接続", self.settings.obs_off_device_id)], self.settings.obs_off_device_id)
+            self._replace_combo(self.obs_on_combo, [("OBS未接続", self.settings.obs_on_device_id)], self.settings.obs_on_device_id)
+            return
         source = str(current_dropdown_value(self.obs_source_combo) or "")
         selected = next((item for item in inputs if item.name == source), None)
         devices = selected.devices if selected else ()
@@ -528,6 +535,9 @@ class RvcControlTab(QWidget):
             self.model_combo,
         ):
             widget.setEnabled(not busy and state != RvcRuntimeState.ON)
+        obs_available = self.snapshot is None or self.snapshot.obs_connected
+        for widget in (self.obs_source_combo, self.obs_off_combo, self.obs_on_combo):
+            widget.setEnabled(not busy and state != RvcRuntimeState.ON and obs_available)
         endpoint = (self.worker_host_input.text().strip(), self.worker_port_input.value())
         self.start_mmvc_button.setEnabled(
             not busy and state != RvcRuntimeState.ON and endpoint == RVC_CONNECTION_PRESETS["main"]
