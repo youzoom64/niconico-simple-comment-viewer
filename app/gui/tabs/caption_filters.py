@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import re
-import sys
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -20,11 +18,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-CODE_PARTS = Path(r"J:\tools\api-scripts\repo\code_parts\python")
-if str(CODE_PARTS) not in sys.path:
-    sys.path.insert(0, str(CODE_PARTS))
-from qt_dropdown.qt_dropdown import create_dropdown, current_dropdown_value, set_dropdown_value
-from qt_table_columns.qt_table_columns import (
+from app.gui.common.qt_dropdown import create_dropdown, current_dropdown_value, set_dropdown_value
+from app.gui.common.qt_table_columns import (
     configure_table_columns,
     connect_persistent_table_state,
     set_table_row_key_column,

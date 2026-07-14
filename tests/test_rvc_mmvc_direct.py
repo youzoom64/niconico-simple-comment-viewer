@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from typing import Any
+from pathlib import Path
 
 from app.services import rvc_mmvc_direct
 from app.services.rvc_mmvc_direct import RvcMmvcDirectClient
+import pytest
 
 
 class FakeResponse:
@@ -83,3 +85,21 @@ def test_ensure_running_does_not_launch_when_info_is_already_ready(monkeypatch) 
 
     assert client.ensure_running() == ready
     assert client.last_ensure_started is False
+
+
+def test_direct_audio_requires_user_selected_output_device() -> None:
+    client = RvcMmvcDirectClient("http://127.0.0.1:18888")
+    with pytest.raises(Exception, match="MMVC出力デバイス名を設定"):
+        client.start_audio("Physical Mic")
+
+
+def test_mmvc_executable_and_output_device_are_user_configurable(tmp_path: Path) -> None:
+    executable = tmp_path / "MMVC" / "MMVCServerSIO.exe"
+    client = RvcMmvcDirectClient(
+        "http://127.0.0.1:18888",
+        executable=str(executable),
+        output_device_hint="Virtual Output A",
+    )
+    assert client.MMVC_EXE == executable
+    assert client.MMVC_ROOT == executable.parent
+    assert client.output_device_hint == "Virtual Output A"

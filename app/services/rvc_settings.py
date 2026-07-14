@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import os
 from pathlib import Path
+import sys
 from typing import Any
 
 from app.settings.store import JsonSettingsStore
+from app.core.paths import APP_PATHS
 
 RVC_SETTINGS_KEY = "rvc"
-RVC_TOKEN_ENV_PATH = Path(r"J:\tools\scripts\rvc_lan_transport\.env")
+DEFAULT_RVC_TOOLS_ROOT = APP_PATHS.root / "tools" / "rvc"
+DEFAULT_TRANSPORT_ROOT = DEFAULT_RVC_TOOLS_ROOT / "transport"
+DEFAULT_TOKEN_ENV_PATH = APP_PATHS.data / "rvc.env"
 
 
 class RvcSettingsError(ValueError):
@@ -52,9 +57,14 @@ def _bool(value: Any, default: bool) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class RvcSettings:
-    worker_host: str = "192.168.11.6"
-    worker_port: int = 8770
+    worker_host: str = "127.0.0.1"
+    worker_port: int = 18888
     main_port: int = 8771
+    mmvc_executable: str = ""
+    transport_root: str = str(DEFAULT_TRANSPORT_ROOT)
+    python_executable: str = sys.executable
+    token_env_path: str = str(DEFAULT_TOKEN_ENV_PATH)
+    mmvc_output_device_hint: str = ""
     obs_input_name: str = ""
     obs_off_device_id: str = ""
     obs_on_device_id: str = ""
@@ -67,9 +77,14 @@ class RvcSettings:
     def from_mapping(cls, raw: Any) -> "RvcSettings":
         data = raw if isinstance(raw, dict) else {}
         return cls(
-            worker_host=_text(data.get("worker_host"), "192.168.11.6") or "192.168.11.6",
-            worker_port=_port(data.get("worker_port"), 8770),
+            worker_host=_text(data.get("worker_host"), "127.0.0.1") or "127.0.0.1",
+            worker_port=_port(data.get("worker_port"), 18888),
             main_port=_port(data.get("main_port"), 8771),
+            mmvc_executable=_text(data.get("mmvc_executable"), os.environ.get("RVC_MMVC_EXE", "")),
+            transport_root=_text(data.get("transport_root"), str(DEFAULT_TRANSPORT_ROOT)) or str(DEFAULT_TRANSPORT_ROOT),
+            python_executable=_text(data.get("python_executable"), sys.executable) or sys.executable,
+            token_env_path=_text(data.get("token_env_path"), str(DEFAULT_TOKEN_ENV_PATH)) or str(DEFAULT_TOKEN_ENV_PATH),
+            mmvc_output_device_hint=_text(data.get("mmvc_output_device_hint")),
             obs_input_name=_text(data.get("obs_input_name")),
             obs_off_device_id=_text(data.get("obs_off_device_id")),
             obs_on_device_id=_text(data.get("obs_on_device_id")),
@@ -132,7 +147,8 @@ def save_rvc_settings(store: JsonSettingsStore, settings: RvcSettings) -> None:
     store.save_dict(data)
 
 
-def load_rvc_token(path: Path = RVC_TOKEN_ENV_PATH) -> str:
+def load_rvc_token(path: Path | str = DEFAULT_TOKEN_ENV_PATH) -> str:
+    path = Path(path).expanduser()
     if not path.exists():
         raise RvcSettingsError(f"RVC token設定ファイルがありません: {path}")
     for raw in path.read_text(encoding="utf-8-sig").splitlines():

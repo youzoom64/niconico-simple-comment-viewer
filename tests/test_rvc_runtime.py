@@ -143,6 +143,8 @@ class FakeObs:
 
 def settings() -> RvcSettings:
     return RvcSettings(
+        worker_host="192.0.2.10",
+        worker_port=8770,
         obs_input_name="マイク",
         obs_off_device_id=OFF_ID,
         obs_on_device_id=ON_ID,

@@ -1,17 +1,12 @@
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import QSettings, QThread, QTimer, QUrl, pyqtSignal
-from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWebSockets import QWebSocket
 from PyQt6.QtWidgets import (
-    QApplication,
     QCheckBox,
-    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -26,21 +21,19 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-CODE_PARTS = Path(r"J:\tools\api-scripts\repo\code_parts\python")
-if str(CODE_PARTS) not in sys.path:
-    sys.path.insert(0, str(CODE_PARTS))
-from qt_dropdown.qt_dropdown import create_dropdown, current_dropdown_value, set_dropdown_value
+from app.gui.common.qt_dropdown import create_dropdown, current_dropdown_value, set_dropdown_value
 
 from app.core.config import AppConfig
 from app.gui.tabs.caption_filters import CaptionFilterTab
 from app.gui.tabs.caption_style import CaptionStyleTab
 from app.gui.common.error_notice import show_error_notice
 from app.gui.tabs.rtfw_async import RtfwTaskWorker, SOURCE_LABELS, STATE_LABELS
+from app.gui.tabs.rtfw_control_helpers import RtfwControlHelpers
 from app.services.caption_api import CaptionApiClient
 from app.services.rtfw_api import RtfwApiClient, RtfwDevice, RtfwStatus, normalize_local_http_url
 from app.services.rtfw_service import RtfwServiceManager
 from app.settings.store import JsonSettingsStore
-class RtfwControlTab(QWidget):
+class RtfwControlTab(RtfwControlHelpers, QWidget):
     config_saved = pyqtSignal(object)
 
     def __init__(self, store: JsonSettingsStore, config: AppConfig, auto_connect: bool = True, service_manager: RtfwServiceManager | None = None) -> None:
@@ -128,16 +121,6 @@ class RtfwControlTab(QWidget):
             QTimer.singleShot(0, self.refresh_configuration)
             QTimer.singleShot(0, self.refresh_models)
             QTimer.singleShot(0, self.ensure_websocket)
-
-    @staticmethod
-    def _double_spin(minimum: float, maximum: float, value: float, step: float, suffix: str) -> QDoubleSpinBox:
-        widget = QDoubleSpinBox()
-        widget.setRange(minimum, maximum)
-        widget.setDecimals(2)
-        widget.setSingleStep(step)
-        widget.setValue(value)
-        widget.setSuffix(suffix)
-        return widget
 
     def _build_layout(self) -> None:
         connection = QHBoxLayout()
@@ -505,33 +488,3 @@ class RtfwControlTab(QWidget):
         self.mic_button.setEnabled(enabled)
         self.pc_button.setEnabled(enabled)
         self.stop_button.setEnabled(enabled)
-
-    def open_overlay(self) -> None:
-        try:
-            url = normalize_local_http_url(self.overlay_url_input.text(), label="OBS字幕URL")
-        except ValueError as exc:
-            self.connection_label.setText("URL設定エラー")
-            show_error_notice(self, "OBS字幕URLエラー", exc)
-            return
-        QDesktopServices.openUrl(QUrl(url))
-
-    def copy_overlay(self) -> None:
-        try:
-            url = normalize_local_http_url(self.overlay_url_input.text(), label="OBS字幕URL")
-        except ValueError as exc:
-            self.connection_label.setText("URL設定エラー")
-            show_error_notice(self, "OBS字幕URLエラー", exc)
-            return
-        QApplication.clipboard().setText(url)
-        self.connection_label.setText("OBS字幕URLをコピー済み")
-
-
-    def shutdown(self) -> None:
-        self.poll_timer.stop()
-        self.reconnect_timer.stop()
-        self.websocket.abort()
-        self.caption_style_tab.shutdown()
-        self.caption_filter_tab.shutdown()
-        for thread in list(self.threads):
-            thread.quit()
-            thread.wait(3000)

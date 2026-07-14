@@ -18,6 +18,8 @@ data/
 config.json
 
 app/services/chrome_debug_data_*/
+/tools/rvc/**/runtime/
+/tools/rvc/**/logs/
 
 Thumbs.db
 Desktop.ini

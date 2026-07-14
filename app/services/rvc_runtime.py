@@ -103,15 +103,22 @@ class RvcRuntimeController:
         direct_factory: Callable[[RvcSettings], Any] | None = None,
         main_client_factory: Callable[[RvcSettings], Any] | None = None,
         obs_factory: Callable[[ObsAccess], Any] = RvcObsApi,
-        token_loader: Callable[[], str] = load_rvc_token,
+        token_loader: Callable[[], str] | None = None,
         log: Callable[[str, str], None] | None = None,
     ) -> None:
         self.main_manager = main_manager or RvcMainServiceManager()
         self.worker_factory = worker_factory or (lambda settings, token: RvcWorkerApiClient(settings.worker_base_url, token))
-        self.direct_factory = direct_factory or (lambda settings: RvcMmvcDirectClient(settings.worker_base_url))
+        self.direct_factory = direct_factory or (
+            lambda settings: RvcMmvcDirectClient(
+                settings.worker_base_url,
+                executable=settings.mmvc_executable,
+                output_device_hint=settings.mmvc_output_device_hint,
+            )
+        )
         self.main_client_factory = main_client_factory or (lambda settings: RvcMainApiClient(settings.main_base_url))
         self.obs_factory = obs_factory
         self.token_loader = token_loader
+        self._token_secret = ""
         self.log = log or (lambda _level, _message: None)
         self.state = RvcRuntimeState.OFF
         self.last_error = ""
@@ -163,6 +170,11 @@ class RvcRuntimeController:
     def _direct_worker(self, settings: RvcSettings) -> Any:
         return self.direct_factory(settings)
 
+    def _load_token(self, settings: RvcSettings) -> str:
+        token = self.token_loader() if self.token_loader is not None else load_rvc_token(settings.token_env_path)
+        self._token_secret = token
+        return token
+
     def start_mmvc(
         self,
         settings: RvcSettings,
@@ -188,7 +200,7 @@ class RvcRuntimeController:
     ) -> RvcRuntimeSnapshot:
         settings.validate_connection()
         direct = self._is_mmvc_direct(settings)
-        token = "" if direct else self.token_loader()
+        token = "" if direct else self._load_token(settings)
         errors: list[str] = []
         try:
             worker = self._direct_worker(settings) if direct else self.worker_factory(settings, token)
@@ -220,7 +232,8 @@ class RvcRuntimeController:
             self._main_connected = True
             self._audio_running = self.state == RvcRuntimeState.ON
             self._audio_pipeline = {"state": "mmvc_direct"}
-            self._log_path = str(RvcMmvcDirectClient.MMVC_LOG)
+            direct_worker = self._direct_worker(settings)
+            self._log_path = str(getattr(direct_worker, "MMVC_LOG", ""))
             if ensure_main:
                 try:
                     devices = self.main_client_factory(settings).devices()
@@ -257,7 +270,7 @@ class RvcRuntimeController:
         if self.state in {RvcRuntimeState.STARTING, RvcRuntimeState.STOPPING}:
             return self.snapshot()
         direct = self._is_mmvc_direct(settings)
-        token = "" if direct else self.token_loader()
+        token = "" if direct else self._load_token(settings)
         worker = self._direct_worker(settings) if direct else self.worker_factory(settings, token)
         self.log("INFO", f"RVCモデル切替開始: slot={int(slot_index)}")
         worker.select_model(int(slot_index))
@@ -280,7 +293,7 @@ class RvcRuntimeController:
                 settings.validate_connection()
             else:
                 settings.validate_for_start()
-            token = "" if direct else self.token_loader()
+            token = "" if direct else self._load_token(settings)
             worker = self._direct_worker(settings) if direct else self.worker_factory(settings, token)
             overview = worker.overview()
             self._apply_worker(overview)
@@ -317,7 +330,7 @@ class RvcRuntimeController:
                 self._main_connected = True
                 self._audio_running = True
                 self._audio_pipeline = {"state": "mmvc_direct"}
-                self._log_path = str(RvcMmvcDirectClient.MMVC_LOG)
+                self._log_path = str(getattr(worker, "MMVC_LOG", ""))
                 self.state = RvcRuntimeState.ON
                 self.last_error = ""
                 self.log("INFO", "RVC起動完了: ローカルMMVC直接接続でOBSをRVCへ切替")
@@ -473,10 +486,7 @@ class RvcRuntimeController:
 
     def _short_error(self, exc: BaseException) -> str:
         message = str(exc).strip() or type(exc).__name__
-        try:
-            token = self.token_loader()
-        except Exception:
-            token = ""
+        token = self._token_secret
         if token:
             message = message.replace(token, "[secret]")
         return message[:240]

@@ -68,25 +68,24 @@ def test_rvc_tab_has_large_toggle_shared_dropdowns_and_default_candidates(tmp_pa
         tab.apply_snapshot(snapshot())
         assert tab.toggle_button.text() == "RVCを使用"
         assert tab.toggle_button.minimumHeight() >= 56
-        assert tab.connection_preset_combo.currentData() == "sub"
+        assert tab.connection_preset_combo.currentData() == "main"
         assert type(tab.obs_source_combo).__name__ == "NoWheelClosedComboBox"
         assert tab.obs_source_combo.currentData() == "マイク"
         assert tab.obs_off_combo.currentData() == "physical-guid"
-        assert tab.obs_on_combo.currentData() == "cable-guid"
+        assert tab.obs_on_combo.currentData() is None
         assert tab.audio_input_combo.currentData() == "1"
-        assert tab.audio_output_combo.currentData() == "25"
+        assert tab.audio_output_combo.currentData() is None
         assert tab.model_combo.currentData() == 1
         assert "Tsukuyomi-chan" in tab.active_model_label.text()
         raw = tab.store.load_dict()["rvc"]
-        assert raw["obs_on_device_id"] == "cable-guid"
-        assert "CABLE Output" not in raw["obs_on_device_id"]
+        assert raw["obs_on_device_id"] == ""
     finally:
         tab.shutdown()
         tab.deleteLater()
         app.processEvents()
 
 
-def test_rvc_connection_presets_switch_and_persist_main_and_sub(tmp_path: Path) -> None:
+def test_rvc_connection_presets_switch_and_persist_without_fixed_lan_ip(tmp_path: Path) -> None:
     app = QApplication.instance() or QApplication([])
     store = JsonSettingsStore(tmp_path / "config.json")
     tab = RvcControlTab(store, AppConfig(), auto_connect=False)
@@ -99,22 +98,26 @@ def test_rvc_connection_presets_switch_and_persist_main_and_sub(tmp_path: Path) 
         assert tab.worker_port_input.value() == 18888
         assert tab.start_mmvc_button.isEnabled()
         assert tab.start_mmvc_button.text() == "MMVCを起動"
+        assert tab.transport_root_input.text().endswith("tools\\rvc\\transport")
+        assert tab.python_executable_input.text()
         assert store.load_dict()["rvc"]["worker_host"] == "127.0.0.1"
         assert store.load_dict()["rvc"]["worker_port"] == 18888
         assert store.load_dict()["rvc"]["auto_start_mmvc"] is False
 
-        tab.connection_preset_combo.setCurrentIndex(tab.connection_preset_combo.findData("sub"))
+        tab.worker_host_input.setText("10.0.0.25")
+        tab.connection_preset_combo.setCurrentIndex(tab.connection_preset_combo.findData("lan_worker"))
         tab._connection_preset_selected(tab.connection_preset_combo.currentIndex())
-        assert tab.worker_host_input.text() == "192.168.11.6"
+        assert tab.worker_host_input.text() == "10.0.0.25"
         assert tab.worker_port_input.value() == 8770
+        assert tab.connection_preset_combo.currentData() == "lan_worker"
         assert not tab.start_mmvc_button.isEnabled()
-        assert store.load_dict()["rvc"]["worker_host"] == "192.168.11.6"
+        assert store.load_dict()["rvc"]["worker_host"] == "10.0.0.25"
 
-        tab.connection_preset_combo.setCurrentIndex(tab.connection_preset_combo.findData("main_lan_worker_test"))
+        tab.connection_preset_combo.setCurrentIndex(tab.connection_preset_combo.findData("local_worker"))
         tab._connection_preset_selected(tab.connection_preset_combo.currentIndex())
         assert tab.worker_host_input.text() == "127.0.0.1"
-        assert tab.worker_port_input.value() == 8772
-        assert store.load_dict()["rvc"]["worker_port"] == 8772
+        assert tab.worker_port_input.value() == 8770
+        assert store.load_dict()["rvc"]["worker_port"] == 8770
     finally:
         tab.shutdown()
         tab.deleteLater()
@@ -132,7 +135,7 @@ def test_rvc_on_snapshot_changes_next_action_and_shows_runtime_status(tmp_path: 
         assert "CABLE Output" in tab.current_obs_label.text()
         assert "main.jsonl" in tab.log_path_label.text()
         assert "4境界すべて非無音" in tab.pipeline_status_label.text()
-        assert "CABLE Inputへ出力 20" in tab.pipeline_status_label.text()
+        assert "選択デバイスへ出力 20" in tab.pipeline_status_label.text()
     finally:
         tab.shutdown()
         tab.deleteLater()
@@ -152,9 +155,9 @@ def test_rvc_device_ids_restore_after_gui_recreation_without_auto_start(tmp_path
     try:
         assert restored.obs_source_combo.currentData() == "マイク"
         assert restored.obs_off_combo.currentData() == "physical-guid"
-        assert restored.obs_on_combo.currentData() == "cable-guid"
+        assert restored.obs_on_combo.currentData() is None
         assert restored.audio_input_combo.currentData() == "1"
-        assert restored.audio_output_combo.currentData() == "25"
+        assert restored.audio_output_combo.currentData() is None
         assert restored.model_combo.currentData() == 1
         assert restored.toggle_button.text() == "RVCを使用"
         assert restored.snapshot is None
@@ -346,7 +349,7 @@ def test_initial_auto_connect_starts_main_only_for_device_discovery(tmp_path: Pa
         assert tab.audio_input_combo.count() == 1
         assert tab.audio_output_combo.count() == 1
         assert tab.audio_input_combo.currentData() == "1"
-        assert tab.audio_output_combo.currentData() == "25"
+        assert tab.audio_output_combo.currentData() is None
         assert tab.snapshot is not None
         assert not tab.snapshot.audio_running
         assert tab.snapshot.state == RvcRuntimeState.OFF

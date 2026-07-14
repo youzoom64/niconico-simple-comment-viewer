@@ -1,6 +1,4 @@
 from __future__ import annotations
-import sys
-from pathlib import Path
 from typing import Any
 from PyQt6.QtCore import QEventLoop, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -12,30 +10,21 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
-CODE_PARTS = Path(r"J:\tools\api-scripts\repo\code_parts\python")
-if str(CODE_PARTS) not in sys.path:
-    sys.path.insert(0, str(CODE_PARTS))
-from qt_dropdown.qt_dropdown import create_dropdown, current_dropdown_value, set_dropdown_value
+from app.gui.common.qt_dropdown import create_dropdown, current_dropdown_value
 from app.core.config import AppConfig
 from app.gui.tabs.rvc_async import RvcRuntimeWorker
 from app.gui.common.error_notice import show_error_notice
+from app.gui.tabs.rvc_control_helpers import RVC_CONNECTION_PRESETS, RvcControlHelpers
 from app.services.obs_websocket import ObsAudioInput
 from app.services.rvc_main_service import preferred_realtime_device
 from app.services.rvc_runtime import ObsAccess, RvcRuntimeController, RvcRuntimeSnapshot, RvcRuntimeState, STATE_LABELS
 from app.services.rvc_settings import RvcSettings, load_rvc_settings, save_rvc_settings
 from app.settings.store import JsonSettingsStore
 
-RVC_CONNECTION_PRESETS = {
-    "main": ("127.0.0.1", 18888),
-    "sub": ("192.168.11.6", 8770),
-    "main_lan_worker_test": ("127.0.0.1", 8772),
-}
-
-class RvcControlTab(QWidget):
+class RvcControlTab(RvcControlHelpers, QWidget):
     task_requested = pyqtSignal(str, object)
     log_message = pyqtSignal(str, str)
 
@@ -70,10 +59,19 @@ class RvcControlTab(QWidget):
         self.main_port_input = self._port_spin(self.settings.main_port)
         self.connection_preset_combo = create_dropdown(items=[], min_width=220, fallback_first=False)
         self.connection_preset_combo.addItem("メインPC（このPC）", "main")
-        self.connection_preset_combo.addItem("サブPC", "sub")
-        self.connection_preset_combo.addItem("メインPC LANワーカーテスト", "main_lan_worker_test")
+        self.connection_preset_combo.addItem("LANワーカー（ホスト指定）", "lan_worker")
+        self.connection_preset_combo.addItem("このPCのLANワーカー", "local_worker")
         self.connection_preset_combo.addItem("カスタム", "custom")
         self.start_mmvc_button = QPushButton("MMVCを起動")
+        self.mmvc_executable_input = QLineEdit(self.settings.mmvc_executable)
+        self.transport_root_input = QLineEdit(self.settings.transport_root)
+        self.python_executable_input = QLineEdit(self.settings.python_executable)
+        self.token_env_path_input = QLineEdit(self.settings.token_env_path)
+        self.mmvc_output_hint_input = QLineEdit(self.settings.mmvc_output_device_hint)
+        self.mmvc_browse_button = QPushButton("参照")
+        self.transport_browse_button = QPushButton("参照")
+        self.python_browse_button = QPushButton("参照")
+        self.token_browse_button = QPushButton("参照")
         self._sync_connection_preset()
         self.refresh_button = QPushButton("再読込／接続確認")
 
@@ -125,13 +123,6 @@ class RvcControlTab(QWidget):
             # are populated; later timer probes reuse it without UI churn.
             QTimer.singleShot(0, lambda: self.run_action("refresh", quiet=True))
 
-    @staticmethod
-    def _port_spin(value: int) -> QSpinBox:
-        spin = QSpinBox()
-        spin.setRange(1, 65535)
-        spin.setValue(value)
-        return spin
-
     def _build_layout(self) -> None:
         top = QVBoxLayout()
         top.addWidget(self.toggle_button)
@@ -152,19 +143,24 @@ class RvcControlTab(QWidget):
         endpoint_row.addWidget(self.main_port_input)
         connection_form.addRow("接続先", endpoint_row)
         connection_form.addRow("ローカルMMVC", self.start_mmvc_button)
+        connection_form.addRow("MMVCServerSIO.exe", self._browse_row(self.mmvc_executable_input, self.mmvc_browse_button))
+        connection_form.addRow("音声制御サービス", self._browse_row(self.transport_root_input, self.transport_browse_button))
+        connection_form.addRow("起動Python", self._browse_row(self.python_executable_input, self.python_browse_button))
+        connection_form.addRow("LANトークン設定", self._browse_row(self.token_env_path_input, self.token_browse_button))
+        connection_form.addRow("MMVC出力デバイス名", self.mmvc_output_hint_input)
         connection_box = QGroupBox("RVC LAN接続")
         connection_box.setLayout(connection_form)
 
         obs_form = QFormLayout()
         obs_form.addRow("OBSマイク入力ソース", self.obs_source_combo)
         obs_form.addRow("RVC OFF時（物理マイク）", self.obs_off_combo)
-        obs_form.addRow("RVC ON時（CABLE Output）", self.obs_on_combo)
+        obs_form.addRow("RVC ON時（変換済み音声）", self.obs_on_combo)
         obs_box = QGroupBox("OBSマイク切替")
         obs_box.setLayout(obs_form)
 
         audio_form = QFormLayout()
         audio_form.addRow("RVCへ送る入力マイク", self.audio_input_combo)
-        audio_form.addRow("変換済み音声の書込先", self.audio_output_combo)
+        audio_form.addRow("変換済み音声の再生先", self.audio_output_combo)
         audio_box = QGroupBox("メインPC音声デバイス")
         audio_box.setLayout(audio_form)
 
@@ -201,6 +197,15 @@ class RvcControlTab(QWidget):
         self.worker_host_input.editingFinished.connect(self.save_settings)
         self.worker_port_input.valueChanged.connect(lambda _value: self.save_settings())
         self.main_port_input.valueChanged.connect(lambda _value: self.save_settings())
+        self.mmvc_executable_input.editingFinished.connect(self.save_settings)
+        self.transport_root_input.editingFinished.connect(self.save_settings)
+        self.python_executable_input.editingFinished.connect(self.save_settings)
+        self.token_env_path_input.editingFinished.connect(self.save_settings)
+        self.mmvc_output_hint_input.editingFinished.connect(self.save_settings)
+        self.mmvc_browse_button.clicked.connect(self._browse_mmvc)
+        self.transport_browse_button.clicked.connect(self._browse_transport)
+        self.python_browse_button.clicked.connect(self._browse_python)
+        self.token_browse_button.clicked.connect(self._browse_token)
         self.start_mmvc_button.clicked.connect(lambda: self.run_action("start_mmvc"))
         self.obs_source_combo.activated.connect(self._obs_source_changed)
         self.obs_off_combo.activated.connect(lambda _index: self.save_settings())
@@ -235,6 +240,11 @@ class RvcControlTab(QWidget):
             worker_host=self.worker_host_input.text().strip(),
             worker_port=self.worker_port_input.value(),
             main_port=self.main_port_input.value(),
+            mmvc_executable=self.mmvc_executable_input.text().strip(),
+            transport_root=self.transport_root_input.text().strip(),
+            python_executable=self.python_executable_input.text().strip(),
+            token_env_path=self.token_env_path_input.text().strip(),
+            mmvc_output_device_hint=self.mmvc_output_hint_input.text().strip(),
             obs_input_name=str(current_dropdown_value(self.obs_source_combo) or ""),
             obs_off_device_id=str(current_dropdown_value(self.obs_off_combo) or ""),
             obs_on_device_id=str(current_dropdown_value(self.obs_on_combo) or ""),
@@ -243,33 +253,6 @@ class RvcControlTab(QWidget):
             model_slot_index=self._current_model_slot(),
             auto_start_mmvc=False,
         )
-
-    def _sync_connection_preset(self) -> None:
-        endpoint = (self.worker_host_input.text().strip(), self.worker_port_input.value())
-        preset = next((key for key, value in RVC_CONNECTION_PRESETS.items() if value == endpoint), "custom")
-        set_dropdown_value(self.connection_preset_combo, preset)
-        self.start_mmvc_button.setEnabled(endpoint == RVC_CONNECTION_PRESETS["main"])
-
-    def _connection_preset_selected(self, _index: int) -> None:
-        preset = str(current_dropdown_value(self.connection_preset_combo) or "custom")
-        endpoint = RVC_CONNECTION_PRESETS.get(preset)
-        if endpoint is None:
-            return
-        self._loading = True
-        try:
-            self.worker_host_input.setText(endpoint[0])
-            self.worker_port_input.setValue(endpoint[1])
-        finally:
-            self._loading = False
-        self.save_settings()
-        self.run_action("refresh")
-
-    def _current_model_slot(self) -> int | None:
-        value = current_dropdown_value(self.model_combo)
-        try:
-            return int(value) if value not in (None, "") else None
-        except (TypeError, ValueError):
-            return None
 
     def save_settings(self) -> None:
         if self._loading:
@@ -419,9 +402,6 @@ class RvcControlTab(QWidget):
         devices = selected.devices if selected else ()
         off = self.settings.obs_off_device_id or (selected.current_device_id if selected else "")
         on = self.settings.obs_on_device_id
-        if not on:
-            candidate = next((item for item in devices if item.label.startswith("CABLE Output")), None)
-            on = candidate.id if candidate else ""
         self._replace_combo(self.obs_off_combo, [(item.label, item.id) for item in devices if item.enabled], off)
         self._replace_combo(self.obs_on_combo, [(item.label, item.id) for item in devices if item.enabled], on)
 
@@ -436,10 +416,6 @@ class RvcControlTab(QWidget):
         if preferred_input := preferred_realtime_device(snapshot.audio_inputs, input_id):
             input_id = preferred_input.id
         output_id = self.settings.output_device_id
-        if not output_id:
-            cable_inputs = [item for item in snapshot.audio_outputs if item.name.startswith("CABLE Input")]
-            candidate = next((item for item in cable_inputs if item.host_api == "Windows WASAPI" and round(item.default_sample_rate) == 48_000), max(cable_inputs, key=lambda item: len(item.name), default=None))
-            output_id = candidate.id if candidate else ""
         if preferred_output := preferred_realtime_device(snapshot.audio_outputs, output_id):
             output_id = preferred_output.id
         self._replace_combo(
@@ -462,60 +438,6 @@ class RvcControlTab(QWidget):
             models.append(snapshot.active_model)
         self._replace_combo(self.model_combo, [(f"{item.name}（slot {item.slot_index}）", item.slot_index) for item in models], slot)
 
-    @staticmethod
-    def _replace_combo(combo: Any, items: list[tuple[str, Any]], selected: Any) -> None:
-        target = list(items)
-        if selected not in (None, "") and all(value != selected for _label, value in target):
-            target.append((f"未検出: {selected}", selected))
-        current_items = [(combo.itemText(index), combo.itemData(index)) for index in range(combo.count())]
-        if current_items == target and current_dropdown_value(combo) == selected:
-            return
-        combo.clear()
-        for label, value in target:
-            combo.addItem(label, value)
-        if selected not in (None, ""):
-            set_dropdown_value(combo, selected)
-
-    def _obs_device_label(self, device_id: str) -> str:
-        if not self.snapshot:
-            return ""
-        for source in self.snapshot.obs_inputs:
-            for device in source.devices:
-                if device.id == device_id:
-                    return device.label
-        return ""
-
-    @staticmethod
-    def _pipeline_text(pipeline: dict[str, Any]) -> str:
-        if not pipeline:
-            return "音声経路: 未確認"
-        boundaries = pipeline.get("boundaries") if isinstance(pipeline.get("boundaries"), dict) else {}
-        labels = (
-            ("captured", "入力取得"),
-            ("sent", "サブへ送信"),
-            ("received", "サブから受信"),
-            ("outputWritten", "CABLE Inputへ出力"),
-        )
-        values: list[str] = []
-        for key, label in labels:
-            raw = boundaries.get(key) if isinstance(boundaries.get(key), dict) else {}
-            frames = int(raw.get("frames") or 0)
-            non_silent = int(raw.get("nonSilentFrames") or 0)
-            peak = int(raw.get("lastPeak") or 0)
-            values.append(f"{label} {frames}（非無音 {non_silent} / peak {peak}）")
-        states = {
-            "waiting_input": "入力待ち",
-            "input_silent": "入力が無音",
-            "send_blocked": "送信前で停止",
-            "return_missing": "サブから未返却",
-            "return_silent": "返却音声が無音",
-            "output_blocked": "CABLE Inputへの出力で停止",
-            "output_silent": "CABLE Inputへの出力が無音",
-            "flowing": "4境界すべて非無音で進行",
-        }
-        state = states.get(str(pipeline.get("state") or ""), str(pipeline.get("state") or "未確認"))
-        return f"音声経路: {state} / " + " / ".join(values)
-
     def _update_controls(self) -> None:
         state = self.snapshot.state if self.snapshot else RvcRuntimeState.OFF
         busy = self.busy_action not in {"", "probe"} or self.pending_action is not None or state in {RvcRuntimeState.STARTING, RvcRuntimeState.STOPPING}
@@ -527,6 +449,15 @@ class RvcControlTab(QWidget):
             self.worker_host_input,
             self.worker_port_input,
             self.main_port_input,
+            self.mmvc_executable_input,
+            self.transport_root_input,
+            self.python_executable_input,
+            self.token_env_path_input,
+            self.mmvc_output_hint_input,
+            self.mmvc_browse_button,
+            self.transport_browse_button,
+            self.python_browse_button,
+            self.token_browse_button,
             self.obs_source_combo,
             self.obs_off_combo,
             self.obs_on_combo,

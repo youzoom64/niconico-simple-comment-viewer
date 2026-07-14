@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import QThread
@@ -20,10 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-CODE_PARTS = Path(r"J:\tools\api-scripts\repo\code_parts\python")
-if str(CODE_PARTS) not in sys.path:
-    sys.path.insert(0, str(CODE_PARTS))
-from qt_dropdown.qt_dropdown import create_dropdown, current_dropdown_value, set_dropdown_value
+from app.gui.common.qt_dropdown import create_dropdown, current_dropdown_value, set_dropdown_value
 
 from app.gui.common.color_field import ColorField
 from app.gui.common.font_combo import FontFamilyCombo

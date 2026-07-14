@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,11 +14,10 @@ from PyQt6.QtCore import QProcess, QProcessEnvironment
 from app.services.rvc_http import RvcHttpError, request_json
 from app.services.rvc_settings import RvcSettings
 
-TRANSPORT_ROOT = Path(r"J:\tools\scripts\rvc_lan_transport")
-TRANSPORT_RUN_MAIN = TRANSPORT_ROOT / "run_main.py"
-TRANSPORT_VENV_PYTHON = TRANSPORT_ROOT / ".venv" / "Scripts" / "python.exe"
-COMMON_PYTHON = Path(r"J:\system_tools\venvs\py310-common\Scripts\python.exe")
-DEFAULT_LOG_DIR = TRANSPORT_ROOT / "runtime" / "logs"
+from app.core.paths import APP_PATHS
+
+TRANSPORT_ROOT = APP_PATHS.root / "tools" / "rvc" / "transport"
+DEFAULT_LOG_DIR = APP_PATHS.output / "rvc" / "logs"
 
 
 class RvcMainServiceError(RuntimeError):
@@ -216,16 +216,16 @@ def is_compatible_main_process(identity: ListenerIdentity, status: dict[str, Any
     if str(config.get("remote_url") or "") != settings.worker_websocket_url:
         return False
     command = identity.command_line.replace("/", "\\").lower()
-    expected_root = str(TRANSPORT_ROOT).replace("/", "\\").lower()
+    expected_root = str(Path(settings.transport_root)).replace("/", "\\").lower()
     executable_name = Path(identity.executable).name.lower()
     return executable_name in {"python.exe", "pythonw.exe"} and "run_main.py" in command and expected_root in command
 
 
-def _python_executable() -> Path:
-    for candidate in (TRANSPORT_VENV_PYTHON, COMMON_PYTHON):
-        if candidate.exists():
-            return candidate
-    raise RvcMainServiceError("RVCメインサービス用Pythonが見つかりません")
+def _python_executable(settings: RvcSettings) -> Path:
+    candidate = Path(settings.python_executable or sys.executable).expanduser()
+    if candidate.is_file():
+        return candidate
+    raise RvcMainServiceError(f"RVCメインサービス用Pythonが見つかりません: {candidate}")
 
 
 class RvcMainServiceManager:
@@ -266,8 +266,10 @@ class RvcMainServiceManager:
         return MainServiceLease(client, False, identity.pid, status)
 
     def _start_owned(self, settings: RvcSettings, token: str, client: RvcMainApiClient) -> MainServiceLease:
-        if not TRANSPORT_RUN_MAIN.exists():
-            raise RvcMainServiceError(f"RVCメインサービスが見つかりません: {TRANSPORT_RUN_MAIN}")
+        transport_root = Path(settings.transport_root).expanduser()
+        run_main = transport_root / "run_main.py"
+        if not run_main.is_file():
+            raise RvcMainServiceError(f"RVCメインサービスが見つかりません: {run_main}")
         self.log_dir.mkdir(parents=True, exist_ok=True)
         process = self._process_factory()
         environment = QProcessEnvironment.systemEnvironment()
@@ -278,9 +280,9 @@ class RvcMainServiceManager:
         environment.insert("RVC_LAN_AUTO_START_AUDIO", "0")
         environment.insert("RVC_LAN_LOG_DIR", str(self.log_dir))
         process.setProcessEnvironment(environment)
-        process.setWorkingDirectory(str(TRANSPORT_ROOT))
-        process.setProgram(str(_python_executable()))
-        process.setArguments([str(TRANSPORT_RUN_MAIN)])
+        process.setWorkingDirectory(str(transport_root))
+        process.setProgram(str(_python_executable(settings)))
+        process.setArguments([str(run_main)])
         process.setStandardOutputFile(str(self.log_dir / "main_service_console.log"))
         process.start()
         if not process.waitForStarted(5000):

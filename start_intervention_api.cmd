@@ -9,8 +9,11 @@ if "%ERRORLEVEL%"=="0" (
   echo [niconico-simple-comment-viewer] Intervention API already running on 127.0.0.1:8793
   endlocal & exit /b 0
 )
-set "PYTHON=%CD%\..\niconico-watch-app\.venv\Scripts\python.exe"
-if not exist "%PYTHON%" set "PYTHON=J:\system_tools\python310\python.exe"
+set "PYTHON=%CD%\.venv\Scripts\python.exe"
+if not exist "%PYTHON%" (
+  echo ERROR: Local Python environment was not found. Run setup.cmd first.
+  endlocal & exit /b 1
+)
 set "LOG_DIR=%CD%\data"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 set "LOG=%LOG_DIR%\intervention_api.log"

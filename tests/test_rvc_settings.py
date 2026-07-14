@@ -41,11 +41,14 @@ def test_broken_rvc_settings_fall_back_without_enabling_rvc(tmp_path: Path) -> N
         encoding="utf-8",
     )
     settings = load_rvc_settings(JsonSettingsStore(path))
-    assert settings.worker_port == 8770
+    assert settings.worker_host == "127.0.0.1"
+    assert settings.worker_port == 18888
     assert settings.main_port == 8771
     assert settings.model_slot_index is None
     assert settings.obs_input_name == ""
     assert settings.auto_start_mmvc is False
+    assert settings.transport_root.endswith("tools\\rvc\\transport")
+    assert settings.python_executable
 
 
 def test_legacy_mmvc_auto_start_setting_is_always_disabled(tmp_path: Path) -> None:

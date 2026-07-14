@@ -16,9 +16,6 @@ class RvcMmvcDirectError(RuntimeError):
 
 
 class RvcMmvcDirectClient:
-    MMVC_ROOT = Path(r"J:\ai_tools\voice\rvc\app\MMVCServerSIO")
-    MMVC_EXE = MMVC_ROOT / "MMVCServerSIO.exe"
-    MMVC_LOG = MMVC_ROOT / "vcclient.log"
     MMVC_ARGS = (
         "-p", "18888",
         "--https", "true",
@@ -37,8 +34,12 @@ class RvcMmvcDirectClient:
         "--samples", "samples.json",
     )
 
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, *, executable: str = "", output_device_hint: str = "") -> None:
         self.base_url = base_url.rstrip("/")
+        self.MMVC_EXE = Path(executable).expanduser() if executable else Path("MMVCServerSIO.exe")
+        self.MMVC_ROOT = self.MMVC_EXE.parent
+        self.MMVC_LOG = self.MMVC_ROOT / "vcclient.log"
+        self.output_device_hint = output_device_hint.strip()
         if self.base_url.startswith("http://"):
             alternate = "https://" + self.base_url.removeprefix("http://")
         elif self.base_url.startswith("https://"):
@@ -198,16 +199,14 @@ class RvcMmvcDirectClient:
             name_key = self._device_name(item.get("name"))
             if hint_key and (hint_key in name_key or name_key in hint_key):
                 return int(item.get("index"))
-        if output:
-            for item in pool:
-                if "cableinput" in self._device_name(item.get("name")) and "16ch" not in self._device_name(item.get("name")):
-                    return int(item.get("index"))
         raise RvcMmvcDirectError(f"MMVCの{'出力' if output else '入力'}デバイスが見つかりません: {hint}")
 
     def start_audio(self, input_name: str) -> dict[str, Any]:
+        if not self.output_device_hint:
+            raise RvcMmvcDirectError("MMVC出力デバイス名を設定してください")
         info = self._info()
         input_id = self._find_device(info.get("serverAudioInputDevices"), input_name, output=False)
-        output_id = self._find_device(info.get("serverAudioOutputDevices"), "CABLE Input", output=True)
+        output_id = self._find_device(info.get("serverAudioOutputDevices"), self.output_device_hint, output=True)
         for key, value in (
             ("serverInputDeviceId", input_id),
             ("serverOutputDeviceId", output_id),
