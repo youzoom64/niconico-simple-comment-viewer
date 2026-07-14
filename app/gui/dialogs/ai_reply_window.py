@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -24,6 +24,7 @@ from app.db.repositories.profiles import (
 )
 from app.db.repositories.events import list_events_by_lv
 from app.db.schema import initialize_database
+from app.services.comment_post import extract_nicolive_id, load_latest_user_session, post_comment
 from app.services.manual_ai_reply_context import build_broadcast_comments_context, load_broadcaster_transcript_context
 from app.services.manual_ai_reply_codex import ManualAiReplyCodexResult, run_manual_ai_reply_codex
 from app.services.manual_ai_reply_execution_log import (
@@ -37,6 +38,7 @@ from app.services.manual_ai_reply_prompt import (
     build_manual_ai_reply_prompt,
     build_target_comment_summary,
 )
+from app.services.manual_ai_reply_sent_comments import record_manual_ai_reply_sent_comment
 from app.services.manual_ai_reply_vector_context import build_manual_ai_reply_vector_context
 
 
@@ -59,6 +61,23 @@ class ManualAiReplyCodexWorker(QObject):
         self.finished.emit(result)
 
 
+class ManualAiReplyPostWorker(QObject):
+    posted = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, live_id: str, text: str, is_anonymous: bool) -> None:
+        super().__init__()
+        self.live_id = live_id
+        self.text = text
+        self.is_anonymous = is_anonymous
+
+    def run(self) -> None:
+        try:
+            self.posted.emit(post_comment(self.live_id, self.text, is_anonymous=self.is_anonymous))
+        except Exception as exc:
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
+
+
 class AiReplyWindowDialog(QDialog):
     def __init__(
         self,
@@ -72,6 +91,8 @@ class AiReplyWindowDialog(QDialog):
         broadcaster_id: str = "",
         comment_count: int = 0,
         broadcast_rows: list[dict[str, Any]] | None = None,
+        stream_connected: bool = False,
+        log_sink: Callable[[str, str], None] | None = None,
         parent: Any | None = None,
     ) -> None:
         super().__init__(parent)
@@ -84,9 +105,12 @@ class AiReplyWindowDialog(QDialog):
         self.broadcaster_id = broadcaster_id
         self.comment_count = comment_count
         self.broadcast_rows = list(broadcast_rows or [])
+        self.stream_connected = bool(stream_connected)
+        self.log_sink = log_sink
         self.codex_session_id = ""
         self.codex_cwd = Path(__file__).resolve().parents[3]
         self._last_generated_prompt = ""
+        self._codex_reply_ready = False
         self._broadcast_comments_context: str | None = None
         self._broadcaster_transcript_context: str | None = None
         self._similar_comments_context: str | None = None
@@ -96,10 +120,12 @@ class AiReplyWindowDialog(QDialog):
         self._loading_settings = False
         self._codex_thread: QThread | None = None
         self._codex_worker: ManualAiReplyCodexWorker | None = None
+        self._post_thread: QThread | None = None
+        self._post_worker: ManualAiReplyPostWorker | None = None
         self._current_log_paths: ManualAiReplyLogPaths | None = None
 
         self.setWindowTitle("AI返信ウインドウ")
-        self.resize(840, 760)
+        self.resize(860, 840)
 
         summary = build_target_comment_summary(self.row, self.display_name)
         self.account_value = QLabel(self.account_id or "アカウントIDなし")
@@ -119,23 +145,30 @@ class AiReplyWindowDialog(QDialog):
         self.include_broadcaster_transcript_checkbox = QCheckBox("放送者の文字起こしを渡す")
         self.include_all_comments_checkbox = QCheckBox("放送全体のコメントを渡す")
         self.include_similar_comments_checkbox = QCheckBox("対象アカウントの過去コメント検索を渡す")
+        self.auto_comment_enabled_checkbox = QCheckBox("このアカウントのAI自動コメントを許可")
+        self.auto_comment_enabled_checkbox.setToolTip("放送者側のAI返信フックもONの時だけ、自動投稿を許可します")
         self.prompt_edit = QTextEdit()
         self.prompt_edit.setMinimumHeight(180)
         self.result_edit = QTextEdit()
         self.result_edit.setReadOnly(True)
         self.result_edit.setMinimumHeight(120)
+        self.send_text_edit = QTextEdit()
+        self.send_text_edit.setMinimumHeight(82)
 
         self.save_button = QPushButton("このアカウントに設定を保存")
         self.reload_button = QPushButton("保存済み設定を再読込")
         self.generate_button = QPushButton("Codexで返信を作成")
+        self.send_button = QPushButton("許可して送信")
         self.copy_button = QPushButton("プロンプトをコピー")
         self.close_button = QPushButton("閉じる")
         self.status_label = QLabel("")
+        self.send_status_label = QLabel("")
 
         self._build_layout()
         self._connect()
         self.reload_settings()
         self._update_account_controls_enabled()
+        self._update_send_controls_enabled()
 
     def _build_layout(self) -> None:
         summary_form = QFormLayout()
@@ -151,6 +184,7 @@ class AiReplyWindowDialog(QDialog):
         checkbox_row.addWidget(self.include_broadcaster_transcript_checkbox)
         checkbox_row.addWidget(self.include_all_comments_checkbox)
         checkbox_row.addWidget(self.include_similar_comments_checkbox)
+        checkbox_row.addWidget(self.auto_comment_enabled_checkbox)
         checkbox_row.addStretch(1)
 
         settings_button_row = QHBoxLayout()
@@ -161,6 +195,8 @@ class AiReplyWindowDialog(QDialog):
 
         bottom_button_row = QHBoxLayout()
         bottom_button_row.addWidget(self.status_label, 1)
+        bottom_button_row.addWidget(self.send_status_label, 1)
+        bottom_button_row.addWidget(self.send_button)
         bottom_button_row.addWidget(self.copy_button)
         bottom_button_row.addWidget(self.close_button)
 
@@ -176,6 +212,8 @@ class AiReplyWindowDialog(QDialog):
         layout.addWidget(self.prompt_edit, 1)
         layout.addWidget(QLabel("返信"))
         layout.addWidget(self.result_edit)
+        layout.addWidget(QLabel("送信本文"))
+        layout.addWidget(self.send_text_edit)
         layout.addLayout(bottom_button_row)
         self.setLayout(layout)
 
@@ -185,9 +223,12 @@ class AiReplyWindowDialog(QDialog):
         self.include_broadcaster_transcript_checkbox.toggled.connect(lambda _checked: self._refresh_prompt_if_unedited())
         self.include_all_comments_checkbox.toggled.connect(lambda _checked: self._refresh_prompt_if_unedited())
         self.include_similar_comments_checkbox.toggled.connect(self._handle_similar_comments_toggled)
+        self.auto_comment_enabled_checkbox.toggled.connect(lambda _checked: self._update_send_controls_enabled())
+        self.send_text_edit.textChanged.connect(self._update_send_controls_enabled)
         self.save_button.clicked.connect(self.save_settings)
         self.reload_button.clicked.connect(self.reload_settings)
         self.generate_button.clicked.connect(self.generate_reply)
+        self.send_button.clicked.connect(self.send_reply_comment)
         self.copy_button.clicked.connect(self.copy_prompt)
         self.close_button.clicked.connect(self.close)
 
@@ -216,6 +257,7 @@ class AiReplyWindowDialog(QDialog):
             )
             self.include_all_comments_checkbox.setChecked(bool(settings.get("manual_ai_reply_include_broadcast_comments", False)))
             self.include_similar_comments_checkbox.setChecked(bool(settings.get("manual_ai_reply_include_similar_comments", True)))
+            self.auto_comment_enabled_checkbox.setChecked(bool(settings.get("manual_ai_reply_auto_comment_enabled", False)))
             self._refresh_session_label()
             if self.account_id:
                 self.status_label.setText("保存済み設定を読み込みました")
@@ -241,6 +283,7 @@ class AiReplyWindowDialog(QDialog):
             "manual_ai_reply_include_broadcast_comments": self.include_all_comments_checkbox.isChecked(),
             "manual_ai_reply_include_similar_comments": self.include_similar_comments_checkbox.isChecked(),
             "manual_ai_reply_codex_session_id": self.codex_session_id,
+            "manual_ai_reply_auto_comment_enabled": self.auto_comment_enabled_checkbox.isChecked(),
         }
 
     def generate_reply(self) -> None:
@@ -254,6 +297,9 @@ class AiReplyWindowDialog(QDialog):
         self.save_settings(show_status=False)
         self._current_log_paths = write_manual_ai_reply_prompt_log(prompt, context=self._log_context())
         self.result_edit.clear()
+        self.send_text_edit.clear()
+        self._codex_reply_ready = False
+        self._update_send_controls_enabled()
         self.status_label.setText(f"Codexで返信を作成中... 生プロンプト: {self._current_log_paths.prompt_path}")
         self._set_running(True)
         self._codex_thread = QThread()
@@ -271,20 +317,74 @@ class AiReplyWindowDialog(QDialog):
             self._save_session_id(result.session_id)
             self._refresh_session_label()
             self.result_edit.setPlainText(result.text)
+            self.send_text_edit.setPlainText(result.text)
+            self._codex_reply_ready = bool(str(result.text or "").strip())
             mode = "resume" if result.resumed else "new"
             log_path = self._current_log_paths.prompt_path if self._current_log_paths else ""
             self.status_label.setText(f"返信を作成しました ({mode}) / 生プロンプト: {log_path}")
         else:
             detail = result.stderr or result.text or f"Codex failed: code={result.returncode}"
             self.result_edit.setPlainText(detail)
+            self.send_text_edit.clear()
+            self._codex_reply_ready = False
             self.status_label.setText("Codex返信作成に失敗しました")
         self._cleanup_codex_worker()
 
     def handle_codex_failed(self, message: str) -> None:
         write_manual_ai_reply_result_log(self._current_log_paths, error=message)
         self.result_edit.setPlainText(message)
+        self.send_text_edit.clear()
+        self._codex_reply_ready = False
         self.status_label.setText("Codex返信作成に失敗しました")
         self._cleanup_codex_worker()
+
+    def send_reply_comment(self) -> None:
+        self._log("INFO", "AI返信手動送信ボタン押下")
+        reason = self._manual_send_disabled_reason()
+        if reason:
+            self._log("WARN", f"AI返信手動送信抑止: {reason}")
+            self.send_status_label.setText(reason)
+            return
+        live_id = extract_nicolive_id(self.lv) or ""
+        text = self.send_text_edit.toPlainText().strip()
+        self._log("INFO", f"AI返信手動送信開始: lv={live_id} account={self.account_id} chars={len(text)}")
+        self._set_post_running(True)
+        self._post_thread = QThread()
+        self._post_worker = ManualAiReplyPostWorker(live_id, text, True)
+        self._post_worker.moveToThread(self._post_thread)
+        self._post_thread.started.connect(self._post_worker.run)
+        self._post_worker.posted.connect(self.handle_reply_posted)
+        self._post_worker.failed.connect(self.handle_reply_post_failed)
+        self._post_worker.posted.connect(lambda _result: self._cleanup_post_worker())
+        self._post_worker.failed.connect(lambda _message: self._cleanup_post_worker())
+        self._post_thread.start()
+
+    def handle_reply_posted(self, result: dict[str, Any]) -> None:
+        live_id = str(result.get("live_id") or self.lv)
+        self._log("INFO", f"AI返信手動送信成功: lv={live_id}")
+        text = self.send_text_edit.toPlainText().strip()
+        try:
+            with database_session() as conn:
+                initialize_database(conn)
+                record_id = record_manual_ai_reply_sent_comment(
+                    conn,
+                    lv=live_id,
+                    text=text,
+                    account_id=self.account_id,
+                    codex_session_id=self.codex_session_id,
+                    source_row=self.row,
+                    method="manual",
+                    post_result=result,
+                )
+            self._log("INFO", f"AI返信送信済みコメント記録成功: id={record_id}")
+            self.send_status_label.setText(f"送信・記録しました id={record_id}")
+        except Exception as exc:
+            self._log("WARN", f"AI返信送信済みコメント記録失敗: {type(exc).__name__}: {exc}")
+            self.send_status_label.setText("送信しましたが記録に失敗しました")
+
+    def handle_reply_post_failed(self, message: str) -> None:
+        self._log("ERROR", f"AI返信手動送信失敗: {message}")
+        self.send_status_label.setText("送信に失敗しました")
 
     def _build_prompt(self) -> str:
         return build_manual_ai_reply_prompt(
@@ -393,6 +493,7 @@ class AiReplyWindowDialog(QDialog):
             "include_broadcaster_transcript": self.include_broadcaster_transcript_checkbox.isChecked(),
             "include_broadcast_comments": self.include_all_comments_checkbox.isChecked(),
             "include_similar_comments": self.include_similar_comments_checkbox.isChecked(),
+            "auto_comment_enabled": self.auto_comment_enabled_checkbox.isChecked(),
             "similar_comments_result_count": self._similar_comments_result_count,
             "similar_comments_searched_count": self._similar_comments_searched_count,
             "similar_comments_search_error": self._similar_comments_search_error,
@@ -412,6 +513,7 @@ class AiReplyWindowDialog(QDialog):
         self.generate_button.setEnabled(enabled)
         if not enabled:
             self.status_label.setText("アカウントIDがない行では設定保存とCodex実行はできません")
+        self._update_send_controls_enabled()
 
     def _set_running(self, running: bool) -> None:
         account_enabled = bool(self.account_id)
@@ -419,6 +521,15 @@ class AiReplyWindowDialog(QDialog):
         self.reload_button.setEnabled(account_enabled and not running)
         self.generate_button.setEnabled(account_enabled and not running)
         self.close_button.setEnabled(not running)
+        self._update_send_controls_enabled()
+
+    def _set_post_running(self, running: bool) -> None:
+        self.send_button.setEnabled(False)
+        self.close_button.setEnabled(not running)
+        if running:
+            self.send_status_label.setText("送信中...")
+        else:
+            self._update_send_controls_enabled()
 
     def _cleanup_codex_worker(self) -> None:
         thread = self._codex_thread
@@ -428,6 +539,53 @@ class AiReplyWindowDialog(QDialog):
             thread.quit()
             thread.wait(3000)
         self._set_running(False)
+        self._update_send_controls_enabled()
+
+    def _cleanup_post_worker(self) -> None:
+        thread = self._post_thread
+        self._post_worker = None
+        self._post_thread = None
+        if thread is not None:
+            thread.quit()
+            thread.wait(3000)
+        self._set_post_running(False)
+
+    def _update_send_controls_enabled(self) -> None:
+        if not hasattr(self, "send_button"):
+            return
+        reason = self._manual_send_disabled_reason()
+        enabled = not reason
+        self.send_button.setEnabled(enabled)
+        self.send_button.setToolTip(reason)
+        if enabled:
+            self.send_status_label.setText("送信できます")
+        elif reason:
+            self.send_status_label.setText(reason)
+
+    def _manual_send_disabled_reason(self) -> str:
+        if self._codex_thread is not None:
+            return "Codex返信作成中です"
+        if self._post_thread is not None:
+            return "送信中です"
+        if not self._codex_reply_ready or not self.result_edit.toPlainText().strip():
+            return "Codex返信本文がまだありません"
+        if not self.send_text_edit.toPlainText().strip():
+            return "送信本文が空です"
+        if not self.account_id:
+            return "対象アカウントIDがありません"
+        if not extract_nicolive_id(self.lv):
+            return "有効な放送ID/lvがありません"
+        if not self.stream_connected:
+            return "放送タブが接続中ではありません"
+        try:
+            load_latest_user_session()
+        except Exception as exc:
+            return f"投稿用user_sessionが使えません: {exc}"
+        return ""
+
+    def _log(self, level: str, message: str) -> None:
+        if self.log_sink is not None:
+            self.log_sink(level, message)
 
     def copy_prompt(self) -> None:
         QApplication.clipboard().setText(self.prompt_edit.toPlainText())
@@ -437,5 +595,9 @@ class AiReplyWindowDialog(QDialog):
         if self._codex_thread is not None:
             event.ignore()
             self.status_label.setText("Codex実行中は閉じられません")
+            return
+        if self._post_thread is not None:
+            event.ignore()
+            self.status_label.setText("コメント送信中は閉じられません")
             return
         super().closeEvent(event)

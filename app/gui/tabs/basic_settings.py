@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QFileDialog, QCheckBox, QComboBox, QDoubleSpinBox, Q
 
 from app.core.config import AppConfig
 from app.gui.common.combo_box import NoWheelComboBox
+from app.gui.common.error_notice import show_error_notice
 from app.gui.common.font_combo import FontFamilyCombo
 from app.gui.common.github_skin_picker import select_github_skin
 from app.gui.common.voicevox_style_combo import VoicevoxStyleCombo
@@ -435,7 +436,8 @@ class BasicSettingsTab(QWidget):
         except Exception as exc:
             self.voicevox_style_input.add_fallback_items()
             self.voicevox_style_input.set_current_style_id(self.config.default_voicevox_style)
-            self.status_label.setText(f"VOICEVOX話者読込失敗: {type(exc).__name__}")
+            self.status_label.setText("VOICEVOX話者読込失敗")
+            show_error_notice(self, "VOICEVOX話者読込エラー", exc)
             return
         self.status_label.setText(f"VOICEVOX話者読込: {count}件")
 
@@ -445,7 +447,8 @@ class BasicSettingsTab(QWidget):
         try:
             profiles = get_profiles()
         except Exception as exc:
-            self.status_label.setText(f"Chromeアカウント読込失敗: {type(exc).__name__}")
+            self.status_label.setText("Chromeアカウント読込失敗")
+            show_error_notice(self, "Chromeアカウント読込エラー", exc)
             return
         for profile in profiles:
             profile_dir = str(profile.get("profile_dir") or "")
@@ -467,7 +470,8 @@ class BasicSettingsTab(QWidget):
         try:
             profiles = get_profiles()
         except Exception as exc:
-            self.status_label.setText(f"YouTube Chromeアカウント読込失敗: {type(exc).__name__}")
+            self.status_label.setText("YouTubeアカウント読込失敗")
+            show_error_notice(self, "YouTubeアカウント読込エラー", exc)
             return
         for profile in profiles:
             profile_dir = str(profile.get("profile_dir") or "")

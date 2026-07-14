@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from PyQt6.QtCore import QSize, Qt
@@ -91,6 +92,7 @@ class CommentPage(QWidget):
         self.youtube_accept_worker = None
         self.youtube_accepted_video = None
         self.anonymous_184_first_comments: dict[str, str] = {}
+        self.comment_embedding_enabled = threading.Event()
 
         self.lv_input = QLineEdit()
         self.lv_input.setPlaceholderText("lv350000000 または https://live.nicovideo.jp/watch/lv...")
@@ -109,6 +111,9 @@ class CommentPage(QWidget):
         self.obs_output_checkbox.setChecked(True)
         self.voice_transcript_link_checkbox = QCheckBox("文字起こし紐づけ")
         self.voice_transcript_link_checkbox.setToolTip("この放送タブの文字起こしを放送別CSVへ保存する")
+        self.comment_embedding_checkbox = QCheckBox("コメントをベクター化＋索引化する")
+        self.comment_embedding_checkbox.setToolTip("ON中だけ保存済みコメントをembeddingキューへ投入し、索引を更新する")
+        self.comment_embedding_checkbox.setChecked(False)
         self.trace_checkbox = QCheckBox("TRACEで各メッセージもログ")
         self.level_combo = QComboBox()
         self.level_combo.addItems(["INFO", "DEBUG", "TRACE", "WARN", "ERROR"])
@@ -135,6 +140,10 @@ class CommentPage(QWidget):
         log_row.addWidget(QLabel("ログ"))
         log_row.addWidget(self.level_combo)
         log_row.addWidget(self.trace_checkbox)
+
+        embedding_row = QHBoxLayout()
+        embedding_row.addWidget(self.comment_embedding_checkbox)
+        embedding_row.addStretch(1)
 
         self.table = QTableWidget(0, len(COMMENT_TABLE_COLUMNS))
         self.table.setHorizontalHeaderLabels([label for _key, label, _width in COMMENT_TABLE_COLUMNS])
@@ -178,6 +187,7 @@ class CommentPage(QWidget):
             self.read_aloud_checkbox,
             self.obs_output_checkbox,
             self.voice_transcript_link_checkbox,
+            self.comment_embedding_checkbox,
             self.comment_input,
             self.comment_anonymous_checkbox,
             self.comment_send_button,
@@ -195,6 +205,7 @@ class CommentPage(QWidget):
         layout = QVBoxLayout()
         layout.addLayout(address_row)
         layout.addLayout(log_row)
+        layout.addLayout(embedding_row)
         layout.addWidget(self.status_label)
         layout.addWidget(splitter, 1)
         layout.addLayout(comment_row)

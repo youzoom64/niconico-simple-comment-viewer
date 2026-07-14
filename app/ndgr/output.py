@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import threading
 from datetime import datetime
 from typing import Any, Callable
 
@@ -43,6 +44,7 @@ def save_rows(
     *,
     history_mode: str = "seen",
     metadata: BroadcastHistoryMetadata | None = None,
+    queue_embeddings: bool = False,
 ) -> FetchResult:
     APP_PATHS.output.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -74,12 +76,42 @@ def save_rows(
             json_path=json_path,
             csv_path=csv_path,
         )
+    log_result(log, "保存", jsonl=jsonl_path, json=json_path, csv=csv_path, rows=len(rows), db=db_saved_count)
+    if queue_embeddings:
+        enqueue_saved_comment_embeddings_async(normalized_event_ids, lv=lv, reason=f"{history_mode}_save", log=log)
+    return FetchResult(lv, rows, jsonl_path, json_path, csv_path, db_saved_count, history_metadata)
+
+
+def enqueue_saved_comment_embeddings_async(
+    normalized_event_ids: list[int],
+    *,
+    lv: str,
+    reason: str,
+    log: Callable[[str, str], None],
+) -> None:
+    event_ids = [int(event_id or 0) for event_id in normalized_event_ids if int(event_id or 0) > 0]
+    if not event_ids:
+        log_result(log, "新規コメントembeddingキュー投入", level="DEBUG", count=0, lv=lv)
+        return
+    thread = threading.Thread(
+        target=_enqueue_saved_comment_embeddings,
+        args=(event_ids, lv, reason, log),
+        name=f"comment-embedding-enqueue-{lv or 'unknown'}",
+        daemon=True,
+    )
+    thread.start()
+
+
+def _enqueue_saved_comment_embeddings(
+    normalized_event_ids: list[int],
+    lv: str,
+    reason: str,
+    log: Callable[[str, str], None],
+) -> None:
     queued_embeddings = enqueue_comment_embeddings(
         normalized_event_ids,
         lv=lv,
-        reason=f"{history_mode}_save",
+        reason=reason,
         log=log,
     )
-    log_result(log, "保存", jsonl=jsonl_path, json=json_path, csv=csv_path, rows=len(rows), db=db_saved_count)
-    log_result(log, "コメントembeddingキュー投入", level="DEBUG", count=queued_embeddings, lv=lv)
-    return FetchResult(lv, rows, jsonl_path, json_path, csv_path, db_saved_count, history_metadata)
+    log_result(log, "新規コメントembeddingキュー投入", level="DEBUG", count=queued_embeddings, lv=lv)

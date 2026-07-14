@@ -4,7 +4,7 @@ import sqlite3
 
 from app.db.profile_presets_schema import backfill_live_user_profile_presets, ensure_live_user_profile_preset_table
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -86,8 +86,28 @@ def create_schema(conn: sqlite3.Connection) -> None:
             manual_ai_reply_include_broadcast_comments INTEGER NOT NULL DEFAULT 0,
             manual_ai_reply_include_similar_comments INTEGER NOT NULL DEFAULT 1,
             manual_ai_reply_codex_session_id TEXT NOT NULL DEFAULT '',
+            manual_ai_reply_auto_comment_enabled INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS manual_ai_reply_sent_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lv TEXT NOT NULL DEFAULT '',
+            comment_no TEXT NOT NULL DEFAULT '',
+            vpos TEXT NOT NULL DEFAULT '',
+            broadcast_elapsed TEXT NOT NULL DEFAULT '',
+            sent_at TEXT NOT NULL,
+            text TEXT NOT NULL,
+            account_id TEXT NOT NULL DEFAULT '',
+            codex_session_id TEXT NOT NULL DEFAULT '',
+            source_comment_no TEXT NOT NULL DEFAULT '',
+            source_message_id TEXT NOT NULL DEFAULT '',
+            source_normalized_event_id TEXT NOT NULL DEFAULT '',
+            source_event_key TEXT NOT NULL DEFAULT '',
+            method TEXT NOT NULL DEFAULT '',
+            post_result_json TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS live_user_profile_skins (
@@ -200,6 +220,10 @@ def create_schema(conn: sqlite3.Connection) -> None:
             ON broadcast_history(broadcaster_name);
         CREATE INDEX IF NOT EXISTS idx_broadcast_history_title
             ON broadcast_history(title);
+        CREATE INDEX IF NOT EXISTS idx_manual_ai_reply_sent_comments_lv
+            ON manual_ai_reply_sent_comments(lv, sent_at);
+        CREATE INDEX IF NOT EXISTS idx_manual_ai_reply_sent_comments_source
+            ON manual_ai_reply_sent_comments(source_event_key, method);
         """
     )
     conn.execute(
@@ -214,6 +238,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
     ensure_event_kind_preset_columns(conn)
     ensure_broadcast_history_columns(conn)
     ensure_comment_event_embedding_table(conn)
+    ensure_manual_ai_reply_sent_comments_table(conn)
 
 
 def ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
@@ -237,6 +262,7 @@ def ensure_live_user_profile_columns(conn: sqlite3.Connection) -> None:
     ensure_column(conn, "live_user_profiles", "manual_ai_reply_include_broadcast_comments", "INTEGER NOT NULL DEFAULT 0")
     ensure_column(conn, "live_user_profiles", "manual_ai_reply_include_similar_comments", "INTEGER NOT NULL DEFAULT 1")
     ensure_column(conn, "live_user_profiles", "manual_ai_reply_codex_session_id", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "live_user_profiles", "manual_ai_reply_auto_comment_enabled", "INTEGER NOT NULL DEFAULT 0")
 
 
 def ensure_live_user_profile_skin_table(conn: sqlite3.Connection) -> None:
@@ -413,6 +439,43 @@ def ensure_comment_event_embedding_table(conn: sqlite3.Connection) -> None:
         """
         CREATE INDEX IF NOT EXISTS idx_comment_event_embeddings_model
             ON comment_event_embeddings(provider, model)
+        """
+    )
+
+
+def ensure_manual_ai_reply_sent_comments_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS manual_ai_reply_sent_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            lv TEXT NOT NULL DEFAULT '',
+            comment_no TEXT NOT NULL DEFAULT '',
+            vpos TEXT NOT NULL DEFAULT '',
+            broadcast_elapsed TEXT NOT NULL DEFAULT '',
+            sent_at TEXT NOT NULL,
+            text TEXT NOT NULL,
+            account_id TEXT NOT NULL DEFAULT '',
+            codex_session_id TEXT NOT NULL DEFAULT '',
+            source_comment_no TEXT NOT NULL DEFAULT '',
+            source_message_id TEXT NOT NULL DEFAULT '',
+            source_normalized_event_id TEXT NOT NULL DEFAULT '',
+            source_event_key TEXT NOT NULL DEFAULT '',
+            method TEXT NOT NULL DEFAULT '',
+            post_result_json TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_manual_ai_reply_sent_comments_lv
+            ON manual_ai_reply_sent_comments(lv, sent_at)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_manual_ai_reply_sent_comments_source
+            ON manual_ai_reply_sent_comments(source_event_key, method)
         """
     )
 

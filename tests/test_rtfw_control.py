@@ -7,12 +7,13 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QGroupBox, QScrollArea
 from PyQt6.QtTest import QTest
 
 from app.core.config import AppConfig
 from app.gui.common.font_combo import FontFamilyCombo
 from app.gui.tabs.rtfw_control import RtfwControlTab
+from app.gui.tabs import rtfw_control
 from app.settings.store import JsonSettingsStore
 
 
@@ -36,6 +37,20 @@ class RtfwControlTabTest(unittest.TestCase):
         self.assertEqual("マイク開始", self.tab.mic_button.text())
         self.assertEqual("PC音声開始", self.tab.pc_button.text())
         self.assertEqual("停止", self.tab.stop_button.text())
+        self.assertEqual("RTFWサービスを再起動", self.tab.restart_service_button.text())
+
+    def test_task_error_detail_is_not_written_into_layout_label(self) -> None:
+        shown = []
+        original = rtfw_control.show_error_notice
+        rtfw_control.show_error_notice = lambda _parent, title, detail: shown.append((title, detail))
+        try:
+            self.tab.handle_task_failed("service:restart", "RtfwApiError: very long raw exception")
+        finally:
+            rtfw_control.show_error_notice = original
+
+        self.assertEqual("操作失敗", self.tab.connection_label.text())
+        self.assertNotIn("RtfwApiError", self.tab.connection_label.text())
+        self.assertEqual([("RTFW操作エラー", "RtfwApiError: very long raw exception")], shown)
 
     def test_contains_nested_capture_style_and_filter_tabs(self) -> None:
         self.assertEqual(3, self.tab.inner_tabs.count())
@@ -57,6 +72,46 @@ class RtfwControlTabTest(unittest.TestCase):
         self.assertEqual(5, self.tab.caption_style_tab.outline_width.value())
         self.assertEqual(9, self.tab.caption_style_tab.shadow_blur.value())
         self.assertTrue(self.tab.caption_style_tab.translation_enabled.isChecked())
+
+    def test_caption_settings_scroll_without_hiding_actions(self) -> None:
+        style = self.tab.caption_style_tab
+        self.assertIsInstance(style.settings_scroll, QScrollArea)
+        self.assertTrue(style.settings_scroll.widgetResizable())
+        self.assertIs(style.settings_content, style.settings_scroll.widget())
+        self.assertCountEqual(
+            ["フォント（スキンと共通）", "配置と折返し", "色・縁取り・影", "英訳"],
+            [box.title() for box in style.settings_content.findChildren(QGroupBox)],
+        )
+        self.assertTrue(style.settings_scroll.isAncestorOf(style.japanese_font))
+        self.assertTrue(style.settings_scroll.isAncestorOf(style.translation_note))
+        self.assertFalse(style.settings_scroll.isAncestorOf(style.reload_button))
+        self.assertFalse(style.settings_scroll.isAncestorOf(style.save_button))
+        self.assertFalse(style.settings_scroll.isAncestorOf(style.status_label))
+
+        previous_index = self.tab.inner_tabs.currentIndex()
+        signals_were_blocked = self.tab.inner_tabs.blockSignals(True)
+        self.tab.inner_tabs.setCurrentIndex(1)
+        self.tab.inner_tabs.blockSignals(signals_were_blocked)
+        self.tab.resize(900, 300)
+        self.tab.show()
+        self.app.processEvents()
+
+        scroll_bar = style.settings_scroll.verticalScrollBar()
+        self.assertGreater(scroll_bar.maximum(), 0)
+        scroll_bar.setValue(0)
+        style.settings_scroll.ensureWidgetVisible(style.translation_note)
+        self.app.processEvents()
+        self.assertGreater(scroll_bar.value(), 0)
+        self.assertTrue(style.reload_button.isVisible())
+        self.assertTrue(style.save_button.isVisible())
+        self.assertLessEqual(style.reload_button.geometry().bottom(), style.rect().bottom())
+        self.assertLess(style.minimumSizeHint().height(), 200)
+        self.assertLess(self.tab.minimumSizeHint().height(), 500)
+
+        self.tab.hide()
+        signals_were_blocked = self.tab.inner_tabs.blockSignals(True)
+        self.tab.inner_tabs.setCurrentIndex(previous_index)
+        self.tab.inner_tabs.blockSignals(signals_were_blocked)
 
     def test_filter_tab_search_enable_and_manual_order(self) -> None:
         filters = self.tab.caption_filter_tab

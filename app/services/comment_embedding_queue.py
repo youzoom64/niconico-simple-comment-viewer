@@ -16,6 +16,7 @@ from app.services.comment_embedding_index import append_comment_embedding_to_ind
 from app.services.comment_embeddings import (
     DEFAULT_OLLAMA_EMBEDDING_MODEL,
     OLLAMA_PROVIDER,
+    OllamaEmbeddingError,
     OllamaEmbeddingClient,
     embed_normalized_event,
     list_comment_events_missing_embeddings,
@@ -149,6 +150,15 @@ class CommentEmbeddingQueue:
 
     def _process_item(self, item: CommentEmbeddingQueueItem) -> None:
         try:
+            if item.log is not None:
+                log_execution(
+                    item.log,
+                    "コメントembedding/index処理開始",
+                    level="DEBUG",
+                    event_id=item.normalized_event_id,
+                    lv=item.lv,
+                    reason=item.reason,
+                )
             client = self._embedding_client()
             with self.connection_factory() as conn:
                 initialize_database(conn)
@@ -195,7 +205,7 @@ class CommentEmbeddingQueue:
                     level="WARN",
                     event_id=item.normalized_event_id,
                     lv=item.lv,
-                    error=f"{type(exc).__name__}: {exc}",
+                    error=format_embedding_failure(exc),
                 )
 
     def _run_missing_backfill(self, *, log: LogSink | None, batch_size: int) -> None:
@@ -230,6 +240,14 @@ class CommentEmbeddingQueue:
                     time.sleep(min(2.0, 0.2 * idle_rounds))
                 else:
                     idle_rounds = 0
+                    if log is not None:
+                        log_result(
+                            log,
+                            "既存コメントembeddingキュー投入",
+                            level="INFO",
+                            count=enqueued,
+                            total=total_enqueued,
+                        )
                     time.sleep(0.1)
             except Exception as exc:
                 if log is not None:
@@ -240,6 +258,15 @@ class CommentEmbeddingQueue:
         if self._client is None:
             self._client = self.client_factory()
         return self._client
+
+
+def format_embedding_failure(exc: Exception) -> str:
+    detail = f"{type(exc).__name__}: {exc}"
+    if isinstance(exc, OllamaEmbeddingError):
+        lower = detail.lower()
+        if any(token in lower for token in ("connection refused", "winerror 10061", "timed out", "urlopen error")):
+            return f"{detail} (Ollama未起動または接続不可)"
+    return detail
 
 
 _DEFAULT_QUEUE: CommentEmbeddingQueue | None = None

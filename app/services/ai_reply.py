@@ -9,8 +9,16 @@ from uuid import uuid4
 
 from app.core.config import AppConfig
 from app.core.paths import APP_PATHS
+from app.db.connection import database_session
+from app.db.repositories.profiles import get_manual_ai_reply_settings
+from app.db.schema import initialize_database
+from app.profiles.comment_setting_apply import account_id_from_row
 from app.services.codex_exec_runner import run_codex_exec
 from app.services.comment_post import post_comment
+from app.services.manual_ai_reply_sent_comments import (
+    has_sent_manual_ai_reply_for_source,
+    record_manual_ai_reply_sent_comment,
+)
 
 
 LogSink = Callable[[str, str], None]
@@ -44,13 +52,27 @@ class AiReplyHook:
     def update_config(self, config: AppConfig) -> None:
         self.config = config
 
-    def maybe_submit(self, *, lv: str, row: dict[str, Any], display_name: str = "") -> AiReplyDecision:
+    def maybe_submit(
+        self,
+        *,
+        lv: str,
+        row: dict[str, Any],
+        display_name: str = "",
+        account_id: str = "",
+    ) -> AiReplyDecision:
         decision = decide_ai_reply(self.config, row)
         if not decision.matched:
             return decision
+        resolved_account_id = str(account_id or account_id_from_row(row) or "").strip()
+        suppress_reason = self._auto_send_suppression_reason(lv=lv, row=row, account_id=resolved_account_id)
+        if suppress_reason:
+            self.log_sink("INFO", f"AI返信自動送信抑止: {suppress_reason}")
+            return AiReplyDecision(False, reason=suppress_reason)
         key = ai_reply_dedupe_key(lv, row)
         with self._lock:
             if key in self._inflight_keys:
+                reason = "同じコメントへのAI返信が実行中"
+                self.log_sink("INFO", f"AI返信自動送信抑止: {reason}")
                 return AiReplyDecision(False, reason="inflight")
             self._inflight_keys.add(key)
         session_key = ai_reply_session_key(lv=lv, row=row, keyword=decision.keyword, trigger_type=decision.trigger_type)
@@ -65,18 +87,36 @@ class AiReplyHook:
         )
         thread = threading.Thread(
             target=self._run_codex_and_post,
-            args=(lv, row, display_name, decision, session_key, session, key),
+            args=(lv, row, display_name, resolved_account_id, decision, session_key, session, key),
             name="ai-reply-hook",
             daemon=True,
         )
         thread.start()
         return decision
 
+    def _auto_send_suppression_reason(self, *, lv: str, row: dict[str, Any], account_id: str) -> str:
+        if not str(lv or "").strip():
+            return "送信先放送IDがない"
+        if not account_id:
+            return "対象アカウントIDがない"
+        try:
+            with database_session() as conn:
+                initialize_database(conn)
+                settings = get_manual_ai_reply_settings(conn, account_id)
+                if not settings.get("manual_ai_reply_auto_comment_enabled", False):
+                    return "対象アカウント側のAI自動コメント許可がOFF"
+                if has_sent_manual_ai_reply_for_source(conn, lv=lv, account_id=account_id, row=row, method="auto"):
+                    return "同じコメントへ送信済み"
+        except Exception as exc:
+            return f"対象アカウント設定確認失敗: {type(exc).__name__}: {exc}"
+        return ""
+
     def _run_codex_and_post(
         self,
         lv: str,
         row: dict[str, Any],
         display_name: str,
+        account_id: str,
         decision: AiReplyDecision,
         session_key: str,
         session: "AiReplySession",
@@ -103,13 +143,29 @@ class AiReplyHook:
             if not reply:
                 self.log_sink("WARN", "AI返信Codex空応答")
                 return
-            post_comment(lv, reply, is_anonymous=True)
+            post_result = post_comment(lv, reply, is_anonymous=True)
             self._session_store.append_turn(
                 session_key,
                 user_text=str(row.get("content") or row.get("text") or ""),
                 assistant_text=reply,
                 session_id=session.session_id,
             )
+            try:
+                with database_session() as conn:
+                    initialize_database(conn)
+                    record_id = record_manual_ai_reply_sent_comment(
+                        conn,
+                        lv=lv,
+                        text=reply,
+                        account_id=account_id,
+                        codex_session_id=session.session_id,
+                        source_row=row,
+                        method="auto",
+                        post_result=post_result,
+                    )
+                self.log_sink("INFO", f"AI返信送信済みコメント記録成功: id={record_id}")
+            except Exception as exc:
+                self.log_sink("WARN", f"AI返信送信済みコメント記録失敗: {type(exc).__name__}: {exc}")
             self.log_sink("INFO", f"AI返信投稿完了: session={session.session_id} keyword={decision.keyword} text={reply[:40]}")
         except Exception as exc:
             self.log_sink("WARN", f"AI返信失敗: {type(exc).__name__}: {exc}")

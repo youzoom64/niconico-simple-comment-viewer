@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -26,6 +27,7 @@ from qt_dropdown.qt_dropdown import create_dropdown, current_dropdown_value, set
 
 from app.gui.common.color_field import ColorField
 from app.gui.common.font_combo import FontFamilyCombo
+from app.gui.common.error_notice import show_error_notice
 from app.gui.tabs.rtfw_async import RtfwTaskWorker
 from app.services.caption_api import CaptionApiClient
 
@@ -160,17 +162,27 @@ class CaptionStyleTab(QWidget):
         translation_box = QGroupBox("英訳")
         translation_box.setLayout(translation)
 
+        self.settings_content = QWidget()
+        self.settings_content.setObjectName("captionSettingsContent")
+        settings_layout = QVBoxLayout(self.settings_content)
+        settings_layout.addWidget(font_box)
+        settings_layout.addWidget(placement_box)
+        settings_layout.addWidget(color_box)
+        settings_layout.addWidget(translation_box)
+        settings_layout.addStretch()
+
+        self.settings_scroll = QScrollArea()
+        self.settings_scroll.setObjectName("captionSettingsScrollArea")
+        self.settings_scroll.setWidgetResizable(True)
+        self.settings_scroll.setWidget(self.settings_content)
+
         actions = QHBoxLayout()
         actions.addWidget(self.reload_button)
         actions.addWidget(self.save_button)
         actions.addWidget(self.status_label, 1)
         layout = QVBoxLayout(self)
-        layout.addWidget(font_box)
-        layout.addWidget(placement_box)
-        layout.addWidget(color_box)
-        layout.addWidget(translation_box)
+        layout.addWidget(self.settings_scroll, 1)
         layout.addLayout(actions)
-        layout.addStretch()
 
     @staticmethod
     def _row(*widgets: QWidget) -> QWidget:
@@ -266,7 +278,8 @@ class CaptionStyleTab(QWidget):
     def _failed(self, action: str, message: str) -> None:
         self.busy.discard(action)
         self.save_button.setEnabled(True)
-        self.status_label.setText(message)
+        self.status_label.setText("操作失敗")
+        show_error_notice(self, "字幕スタイル操作エラー", message)
 
     def _cleanup(self, thread: QThread, worker: RtfwTaskWorker) -> None:
         if thread in self.threads:

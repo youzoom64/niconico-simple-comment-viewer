@@ -30,6 +30,7 @@ from qt_table_columns.qt_table_columns import (
     set_table_row_key_column,
     table_item,
 )
+from app.gui.common.error_notice import show_error_notice
 
 from app.gui.tabs.rtfw_async import RtfwTaskWorker
 from app.services.caption_api import CaptionApiClient
@@ -268,7 +269,8 @@ class CaptionFilterTab(QWidget):
             try:
                 re.compile(pattern)
             except re.error as exc:
-                self.status.setText(f"正規表現が不正です: {exc}")
+                self.status.setText("正規表現エラー")
+                show_error_notice(self, "正規表現エラー", exc)
                 return None
         return {
             "id": rule_id or uuid4().hex,
@@ -306,7 +308,8 @@ class CaptionFilterTab(QWidget):
     def _failed(self, action: str, message: str) -> None:
         self.busy.discard(action)
         self.save_button.setEnabled(True)
-        self.status.setText(message)
+        self.status.setText("操作失敗")
+        show_error_notice(self, "字幕フィルター操作エラー", message)
 
     def _cleanup(self, thread: QThread, worker: RtfwTaskWorker) -> None:
         if thread in self.threads:

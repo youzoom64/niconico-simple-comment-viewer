@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import sqlite3
+import unittest
+from contextlib import contextmanager
+from unittest.mock import patch
+
 from app.core.config import AppConfig
+from app.db.repositories.profiles import upsert_manual_ai_reply_settings
+from app.db.schema import initialize_database
 from app.services.ai_reply import (
     AiReplyDecision,
+    AiReplyHook,
     build_ai_reply_payload,
     build_codex_reply_prompt,
     decide_ai_reply,
@@ -10,6 +18,7 @@ from app.services.ai_reply import (
     parse_keywords,
     parse_rules,
 )
+from app.services.manual_ai_reply_sent_comments import record_manual_ai_reply_sent_comment
 
 
 def test_parse_keywords_accepts_lines_and_commas() -> None:
@@ -84,3 +93,53 @@ def test_build_codex_reply_prompt_contains_session_history() -> None:
 
 def test_normalize_reply_text_is_single_line() -> None:
     assert normalize_reply_text('"返事\\nです"') == "返事 です"
+
+
+class AiReplyHookAutoSafetyTests(unittest.TestCase):
+    def test_suppresses_auto_when_target_account_disabled(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        initialize_database(conn)
+        logs: list[tuple[str, str]] = []
+        hook = AiReplyHook(
+            AppConfig(ai_reply_enabled=True, ai_reply_trigger_prefix=">AI"),
+            lambda level, message: logs.append((level, message)),
+        )
+
+        @contextmanager
+        def fake_session():
+            yield conn
+
+        with patch("app.services.ai_reply.database_session", fake_session):
+            decision = hook.maybe_submit(
+                lv="lv1",
+                row={"content": ">AI 返事して", "user_id": "account-1"},
+                account_id="account-1",
+            )
+
+        self.assertFalse(decision.matched)
+        self.assertEqual("対象アカウント側のAI自動コメント許可がOFF", decision.reason)
+        self.assertTrue(any("AI返信自動送信抑止" in message for _level, message in logs))
+
+    def test_suppresses_auto_duplicate_source(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        initialize_database(conn)
+        row = {"content": ">AI 返事して", "user_id": "account-1", "message_id": "m1", "no": "10"}
+        upsert_manual_ai_reply_settings(conn, "account-1", {"manual_ai_reply_auto_comment_enabled": True})
+        record_manual_ai_reply_sent_comment(conn, lv="lv1", text="返信済み", account_id="account-1", source_row=row, method="auto")
+        logs: list[tuple[str, str]] = []
+        hook = AiReplyHook(
+            AppConfig(ai_reply_enabled=True, ai_reply_trigger_prefix=">AI"),
+            lambda level, message: logs.append((level, message)),
+        )
+
+        @contextmanager
+        def fake_session():
+            yield conn
+
+        with patch("app.services.ai_reply.database_session", fake_session):
+            decision = hook.maybe_submit(lv="lv1", row=row, account_id="account-1")
+
+        self.assertFalse(decision.matched)
+        self.assertEqual("同じコメントへ送信済み", decision.reason)

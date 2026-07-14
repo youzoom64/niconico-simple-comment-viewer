@@ -26,6 +26,7 @@ from app.db.connection import database_session
 from app.db.repositories.broadcast_history import backfill_broadcast_history_from_events, list_broadcast_history
 from app.db.schema import initialize_database
 from app.gui.common.table_state import configure_table_header, connect_persistent_table_state, restore_persistent_table_state
+from app.gui.common.error_notice import show_error_notice
 from app.ndgr.program_info import enrich_history_metadata
 from app.settings.ui_state import UiStateStore
 
@@ -183,7 +184,8 @@ class BroadcastHistoryTab(QWidget):
                     sort=str(self.sort_combo.currentData() or "newest"),
                 )
         except Exception as exc:
-            self.status_label.setText(f"履歴読込失敗: {type(exc).__name__}: {exc}")
+            self.status_label.setText("履歴読込失敗")
+            show_error_notice(self, "配信履歴読込エラー", exc)
             return
         self.rows = [dict(row) for row in rows]
         self.populate()

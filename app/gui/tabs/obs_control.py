@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
 
 from app.core.config import AppConfig
 from app.gui.common.combo_box import NoWheelComboBox
+from app.gui.common.error_notice import show_error_notice
 from app.services.obs_websocket import ObsBrowserSourceSettings, list_obs_inputs, refresh_browser_source, test_obs_connection, update_browser_source
 from app.settings.store import JsonSettingsStore
 
@@ -225,7 +226,8 @@ class ObsControlTab(QWidget):
         try:
             self.apply_sources(asyncio.run(list_obs_inputs(self.ws_url(), self.password_input.text())))
         except Exception as exc:
-            self.status_label.setText(f"ソース一覧取得失敗: {type(exc).__name__}")
+            self.status_label.setText("ソース一覧取得失敗")
+            show_error_notice(self, "OBSソース一覧取得エラー", exc)
 
     def apply_sources(self, sources: Any) -> None:
         self.obs_sources = [str(source) for source in list(sources or [])]

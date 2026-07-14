@@ -21,6 +21,27 @@ class ObsBrowserSourceSettings:
     height: int
 
 
+@dataclass(frozen=True)
+class ObsDeviceOption:
+    id: str
+    label: str
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
+class ObsAudioInput:
+    name: str
+    kind: str
+    current_device_id: str
+    devices: tuple[ObsDeviceOption, ...]
+
+
+@dataclass(frozen=True)
+class ObsOutputActivity:
+    streaming: bool
+    recording: bool
+
+
 class ObsWebSocketClient:
     def __init__(self, url: str, password: str = "", timeout_seconds: float = 5.0) -> None:
         self.url = url
@@ -103,6 +124,96 @@ async def list_obs_inputs(url: str, password: str) -> list[str]:
     async with ObsWebSocketClient(url, password) as client:
         response = await client.request("GetInputList")
     return [str(item.get("inputName") or "") for item in response.get("inputs", []) if item.get("inputName")]
+
+
+async def list_obs_audio_inputs(url: str, password: str) -> list[ObsAudioInput]:
+    async with ObsWebSocketClient(url, password) as client:
+        response = await client.request("GetInputList")
+        result: list[ObsAudioInput] = []
+        for item in response.get("inputs", []):
+            audio_input = await _read_obs_audio_input(client, item)
+            if audio_input is not None:
+                result.append(audio_input)
+    return result
+
+
+async def get_obs_audio_input(url: str, password: str, input_name: str) -> ObsAudioInput:
+    async with ObsWebSocketClient(url, password) as client:
+        response = await client.request("GetInputList")
+        item = next((row for row in response.get("inputs", []) if str(row.get("inputName") or "") == input_name), None)
+        if item is None:
+            raise RuntimeError("OBSマイク入力ソースが見つかりません")
+        audio_input = await _read_obs_audio_input(client, item)
+        if audio_input is None:
+            raise RuntimeError("選択したOBSソースにはdevice_idがありません")
+        return audio_input
+
+
+async def set_obs_input_device(url: str, password: str, input_name: str, device_id: str) -> ObsAudioInput:
+    async with ObsWebSocketClient(url, password) as client:
+        await client.request(
+            "SetInputSettings",
+            {
+                "inputName": input_name,
+                "inputSettings": {"device_id": device_id},
+                "overlay": True,
+            },
+        )
+        response = await client.request("GetInputList")
+        item = next((row for row in response.get("inputs", []) if str(row.get("inputName") or "") == input_name), None)
+        if item is None:
+            raise RuntimeError("OBSマイク入力ソースが見つかりません")
+        audio_input = await _read_obs_audio_input(client, item)
+        if audio_input is None or audio_input.current_device_id != device_id:
+            raise RuntimeError("OBSマイクデバイスの切替を確認できません")
+        return audio_input
+
+
+async def get_obs_output_activity(url: str, password: str) -> ObsOutputActivity:
+    async with ObsWebSocketClient(url, password) as client:
+        stream = await client.request("GetStreamStatus")
+        record = await client.request("GetRecordStatus")
+    return ObsOutputActivity(
+        streaming=bool(stream.get("outputActive")),
+        recording=bool(record.get("outputActive")),
+    )
+
+
+async def _read_obs_audio_input(client: ObsWebSocketClient, item: Any) -> ObsAudioInput | None:
+    if not isinstance(item, dict):
+        return None
+    name = str(item.get("inputName") or "").strip()
+    if not name:
+        return None
+    settings = await client.request("GetInputSettings", {"inputName": name})
+    input_settings = settings.get("inputSettings") if isinstance(settings.get("inputSettings"), dict) else {}
+    current = str(input_settings.get("device_id") or "")
+    try:
+        properties = await client.request(
+            "GetInputPropertiesListPropertyItems",
+            {"inputName": name, "propertyName": "device_id"},
+        )
+    except RuntimeError:
+        if not current:
+            return None
+        properties = {}
+    devices = tuple(
+        ObsDeviceOption(
+            id=str(row.get("itemValue") or ""),
+            label=str(row.get("itemName") or row.get("itemValue") or ""),
+            enabled=bool(row.get("itemEnabled", True)),
+        )
+        for row in properties.get("propertyItems", [])
+        if isinstance(row, dict) and str(row.get("itemValue") or "")
+    )
+    if not current and not devices:
+        return None
+    return ObsAudioInput(
+        name=name,
+        kind=str(item.get("inputKind") or ""),
+        current_device_id=current,
+        devices=devices,
+    )
 
 
 async def update_browser_source(settings: ObsBrowserSourceSettings, *, reload_source: bool = True) -> None:

@@ -24,12 +24,14 @@ class LiveCommentStreamer:
         on_row: Callable[[dict[str, Any]], None],
         trace_each_message: bool = False,
         on_metadata: Callable[[BroadcastHistoryMetadata], None] | None = None,
+        embedding_queue_enabled: Callable[[], bool] | None = None,
     ) -> None:
         self.lv = lv
         self.log = log
         self.on_row = on_row
         self.trace_each_message = trace_each_message
         self.on_metadata = on_metadata
+        self.embedding_queue_enabled = embedding_queue_enabled or (lambda: False)
         self.cancel_requested = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task: asyncio.Task[FetchResult] | None = None
@@ -178,9 +180,20 @@ class LiveCommentStreamer:
         except Exception as exc:
             log_error(self.log, "リアルタイムDB保存失敗", error=f"{type(exc).__name__}: {exc}")
             return
-        enqueue_comment_embedding(
+        if not self._embedding_queue_enabled():
+            log_branch(self.log, "コメントembeddingキュー投入スキップ", level="TRACE", reason="disabled", lv=self.lv)
+            return
+        queued = enqueue_comment_embedding(
             normalized_event_id,
             lv=self.lv,
             reason="stream",
             log=self.log,
         )
+        if queued:
+            log_result(self.log, "新規コメントembeddingキュー投入", level="DEBUG", event_id=normalized_event_id, lv=self.lv)
+
+    def _embedding_queue_enabled(self) -> bool:
+        try:
+            return bool(self.embedding_queue_enabled())
+        except Exception:
+            return False

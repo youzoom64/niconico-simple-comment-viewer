@@ -15,6 +15,7 @@ MANUAL_AI_REPLY_SETTING_KEYS = (
     "manual_ai_reply_include_broadcast_comments",
     "manual_ai_reply_include_similar_comments",
     "manual_ai_reply_codex_session_id",
+    "manual_ai_reply_auto_comment_enabled",
 )
 
 
@@ -80,6 +81,16 @@ def upsert_live_user_profile(conn: sqlite3.Connection, profile: dict[str, Any]) 
         skin_height=skin_height,
         source="profile_save",
     )
+    if "manual_ai_reply_auto_comment_enabled" in profile:
+        conn.execute(
+            """
+            UPDATE live_user_profiles
+            SET manual_ai_reply_auto_comment_enabled = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+            """,
+            (1 if profile.get("manual_ai_reply_auto_comment_enabled", False) else 0, user_id),
+        )
 
 
 def get_live_user_profile(conn: sqlite3.Connection, user_id: str) -> sqlite3.Row | None:
@@ -101,6 +112,7 @@ def get_manual_ai_reply_settings(conn: sqlite3.Connection, user_id: str) -> dict
         "manual_ai_reply_include_broadcast_comments": bool(row_value(row, "manual_ai_reply_include_broadcast_comments", 0)),
         "manual_ai_reply_include_similar_comments": bool(row_value(row, "manual_ai_reply_include_similar_comments", 1)),
         "manual_ai_reply_codex_session_id": str(row_value(row, "manual_ai_reply_codex_session_id", "") or ""),
+        "manual_ai_reply_auto_comment_enabled": bool(row_value(row, "manual_ai_reply_auto_comment_enabled", 0)),
     }
 
 
@@ -117,9 +129,10 @@ def upsert_manual_ai_reply_settings(conn: sqlite3.Connection, user_id: str, sett
             manual_ai_reply_include_broadcaster_transcript,
             manual_ai_reply_include_broadcast_comments,
             manual_ai_reply_include_similar_comments,
-            manual_ai_reply_codex_session_id
+            manual_ai_reply_codex_session_id,
+            manual_ai_reply_auto_comment_enabled
         )
-        VALUES(?, ?, ?, ?, ?, ?, ?)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
             manual_ai_reply_purpose = excluded.manual_ai_reply_purpose,
             manual_ai_reply_output_conditions = excluded.manual_ai_reply_output_conditions,
@@ -127,6 +140,7 @@ def upsert_manual_ai_reply_settings(conn: sqlite3.Connection, user_id: str, sett
             manual_ai_reply_include_broadcast_comments = excluded.manual_ai_reply_include_broadcast_comments,
             manual_ai_reply_include_similar_comments = excluded.manual_ai_reply_include_similar_comments,
             manual_ai_reply_codex_session_id = excluded.manual_ai_reply_codex_session_id,
+            manual_ai_reply_auto_comment_enabled = excluded.manual_ai_reply_auto_comment_enabled,
             updated_at = CURRENT_TIMESTAMP
         """,
         (
@@ -137,6 +151,7 @@ def upsert_manual_ai_reply_settings(conn: sqlite3.Connection, user_id: str, sett
             1 if settings.get("manual_ai_reply_include_broadcast_comments", False) else 0,
             1 if settings.get("manual_ai_reply_include_similar_comments", True) else 0,
             str(settings.get("manual_ai_reply_codex_session_id") or ""),
+            1 if settings.get("manual_ai_reply_auto_comment_enabled", False) else 0,
         ),
     )
 

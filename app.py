@@ -7,7 +7,7 @@ import sys
 import time
 from collections import Counter
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 
 from PyQt6.QtCore import QObject, QThread, Qt, QSize, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QDesktopServices
@@ -57,6 +57,7 @@ from app.gui.tabs.broadcast_history import BROADCAST_HISTORY_TABLE_STATE_KEY, Br
 from app.gui.tabs.event_presets import EventPresetsTab
 from app.gui.tabs.live_users import LiveUsersTab
 from app.gui.tabs.obs_control import ObsControlTab
+from app.gui.tabs.rvc_control import RvcControlTab
 from app.gui.tabs.rtfw_control import RtfwControlTab
 from app.gui.user_icons import cached_user_icon
 from app.ndgr.fetcher import AllCommentFetcher
@@ -179,11 +180,18 @@ class FetchWorker(QObject):
     finished = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, lv: str, trace_each_message: bool, mode: str) -> None:
+    def __init__(
+        self,
+        lv: str,
+        trace_each_message: bool,
+        mode: str,
+        embedding_queue_enabled: Callable[[], bool] | None = None,
+    ) -> None:
         super().__init__()
         self.lv = lv
         self.trace_each_message = trace_each_message
         self.mode = mode
+        self.embedding_queue_enabled = embedding_queue_enabled or (lambda: False)
         self.runner: AllCommentFetcher | LiveCommentStreamer | None = None
 
     def run(self) -> None:
@@ -197,6 +205,7 @@ class FetchWorker(QObject):
                     self.row_received.emit,
                     self.trace_each_message,
                     self.metadata_received.emit,
+                    self.embedding_queue_enabled,
                 )
                 result = asyncio.run(self.runner.stream())
             else:
@@ -205,6 +214,7 @@ class FetchWorker(QObject):
                     self.log.emit,
                     self.trace_each_message,
                     self.metadata_received.emit,
+                    self.embedding_queue_enabled,
                 )
                 result = asyncio.run(self.runner.fetch())
             log_result(self.log.emit, "worker処理時間", elapsed=f"{time.monotonic() - started:.1f}秒")
@@ -220,6 +230,7 @@ class FetchWorker(QObject):
 
 class VoicevoxGuiSignals(QObject):
     log = pyqtSignal(str, str)
+    page_log = pyqtSignal(object, str, str)
 
 
 class CommentPostWorker(QObject):
@@ -307,6 +318,7 @@ class MainWindow(QMainWindow):
         self.comment_numbers = CommentNumberIssuer()
         self.voicevox_signals = VoicevoxGuiSignals()
         self.voicevox_signals.log.connect(self.handle_log)
+        self.voicevox_signals.page_log.connect(self.handle_page_log)
         self.overlay_server = LiveOverlayServer()
         self.ai_reply_hook = AiReplyHook(self.app_config, self.voicevox_signals.log.emit)
         self.voice_transcript_recorder = VoiceTranscriptCsvRecorder()
@@ -360,6 +372,9 @@ class MainWindow(QMainWindow):
         self.rtfw_control_tab.config_saved.connect(self.apply_basic_config)
         self.rtfw_control_tab.websocket.textMessageReceived.connect(self.handle_rtfw_transcript_csv_event)
         self.tabs.addTab(self.rtfw_control_tab, "リアルタイム字幕")
+        self.rvc_control_tab = RvcControlTab(self.settings_store, self.app_config)
+        self.rvc_control_tab.log_message.connect(self.handle_log)
+        self.tabs.addTab(self.rvc_control_tab, "RVC")
         self.setCentralWidget(self.tabs)
 
         self.restore_ui_state()
@@ -378,7 +393,6 @@ class MainWindow(QMainWindow):
         self.obs_control_tab.update_all()
         self.voicevox_pipeline.start()
         self.append_log("INFO", f"VOICEVOX FIFO起動: workers={self.app_config.voicevox_worker_count}")
-        start_comment_embedding_backfill(log=self.voicevox_signals.log.emit)
 
     def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
@@ -403,6 +417,7 @@ class MainWindow(QMainWindow):
         page.cancel_button.clicked.connect(lambda _checked=False, p=page: self.cancel_fetch(p))
         page.lv_input.textChanged.connect(lambda _text, p=page: self.update_comment_page_controls(p))
         page.voice_transcript_link_checkbox.toggled.connect(lambda checked, p=page: self.handle_voice_transcript_link_toggled(p, checked))
+        page.comment_embedding_checkbox.toggled.connect(lambda checked, p=page: self.handle_comment_embedding_toggled(p, checked))
         page.comment_input.textChanged.connect(lambda _text, p=page: self.update_comment_send_enabled(p))
         page.comment_input.returnPressed.connect(lambda p=page: self.send_comment_from_input(p))
         page.comment_send_button.clicked.connect(lambda _checked=False, p=page: self.send_comment_from_input(p))
@@ -722,6 +737,8 @@ class MainWindow(QMainWindow):
             self.basic_settings_tab.config = config
         if hasattr(self, "obs_control_tab"):
             self.obs_control_tab.config = config
+        if hasattr(self, "rvc_control_tab"):
+            self.rvc_control_tab.update_app_config(config)
         self.ai_reply_hook.update_config(config)
         if old_runtime != new_runtime:
             self.voicevox_pipeline.stop()
@@ -777,7 +794,7 @@ class MainWindow(QMainWindow):
             self.start_voice_transcript_csv(page, lv)
 
         page.thread = QThread()
-        page.worker = FetchWorker(lv, page.trace_checkbox.isChecked(), mode)
+        page.worker = FetchWorker(lv, page.trace_checkbox.isChecked(), mode, page.comment_embedding_enabled.is_set)
         page.worker.moveToThread(page.thread)
         page.thread.started.connect(page.worker.run)
         page.worker.log.connect(lambda level, message, p=page: self.handle_log(level, message, p))
@@ -809,6 +826,20 @@ class MainWindow(QMainWindow):
                 self.start_voice_transcript_csv(page, page.current_lv)
             return
         self.stop_voice_transcript_csv(page, "文字起こし紐づけOFF")
+
+    def handle_comment_embedding_toggled(self, page: CommentPage, checked: bool) -> None:
+        if checked:
+            page.comment_embedding_enabled.set()
+            self.append_log("INFO", "コメントembedding制御: ON", page)
+            started = start_comment_embedding_backfill(log=self.comment_embedding_log_sink(page))
+            if not started:
+                self.append_log("INFO", "コメントembeddingバックフィルは既に実行中", page)
+            return
+        page.comment_embedding_enabled.clear()
+        self.append_log("INFO", "コメントembedding制御: OFF", page)
+
+    def comment_embedding_log_sink(self, page: CommentPage) -> Callable[[str, str], None]:
+        return lambda level, message, p=page: self.voicevox_signals.page_log.emit(p, level, message)
 
     def should_auto_link_voice_transcript(self, page: CommentPage) -> bool:
         return matches_auto_broadcaster(
@@ -879,6 +910,10 @@ class MainWindow(QMainWindow):
         if LOG_LEVELS.get(level, 30) >= LOG_LEVELS["DEBUG"]:
             print(format_log_line(level, message), flush=True)
         self.append_log(level, message, page)
+
+    def handle_page_log(self, page: object, level: str, message: str) -> None:
+        target = page if isinstance(page, CommentPage) else None
+        self.handle_log(level, message, target)
 
     def fetch_finished(self, page: CommentPage, result: FetchResult) -> None:
         page.current_lv = result.lv
@@ -1016,11 +1051,17 @@ class MainWindow(QMainWindow):
         restore_scroll(page.table, scroll_state, keep_bottom=should_follow_bottom)
         voice_row = self.apply_comment_setting_command_from_row(page, row)
         display_name = self.display_name_from_row(voice_row or row, page)
-        ai_decision = self.ai_reply_hook.maybe_submit(lv=page.current_lv, row=voice_row or row, display_name=display_name)
+        worker_row = voice_row or row
+        ai_decision = self.ai_reply_hook.maybe_submit(
+            lv=page.current_lv,
+            row=worker_row,
+            display_name=display_name,
+            account_id=self.account_id_from_row(worker_row),
+        )
         if ai_decision.matched:
-            self.append_log("INFO", f"AI返信フック検出: keyword={ai_decision.keyword} no={(voice_row or row).get('no') or ''}", page)
-        self.maybe_accept_youtube_video(page, voice_row or row)
-        self.maybe_start_tag_change(page, voice_row or row)
+            self.append_log("INFO", f"AI返信フック検出: keyword={ai_decision.keyword} no={worker_row.get('no') or ''}", page)
+        self.maybe_accept_youtube_video(page, worker_row)
+        self.maybe_start_tag_change(page, worker_row)
         if voice_row is not None:
             self.enqueue_voicevox_for_row(page, voice_row)
         if row_index == 0 or (row_index + 1) % 100 == 0:
@@ -1476,6 +1517,8 @@ class MainWindow(QMainWindow):
             broadcaster_id=page.broadcaster_id,
             comment_count=len(page.rows),
             broadcast_rows=list(page.rows),
+            stream_connected=page.worker is not None and getattr(page.worker, "mode", "") == "stream",
+            log_sink=self.voicevox_signals.log.emit,
             parent=self,
         )
         self.ai_reply_dialogs.append(dialog)
@@ -1771,6 +1814,8 @@ class MainWindow(QMainWindow):
         self.voicevox_pipeline.stop()
         if hasattr(self, "rtfw_control_tab"):
             self.rtfw_control_tab.shutdown()
+        if hasattr(self, "rvc_control_tab"):
+            self.rvc_control_tab.shutdown()
         self.overlay_server.stop()
         super().closeEvent(event)
 

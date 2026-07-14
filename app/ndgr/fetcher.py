@@ -19,11 +19,13 @@ class AllCommentFetcher:
         log: Callable[[str, str], None],
         trace_each_message: bool = False,
         on_metadata: Callable[[BroadcastHistoryMetadata], None] | None = None,
+        embedding_queue_enabled: Callable[[], bool] | None = None,
     ) -> None:
         self.lv = lv
         self.log = log
         self.trace_each_message = trace_each_message
         self.on_metadata = on_metadata
+        self.embedding_queue_enabled = embedding_queue_enabled or (lambda: False)
         self.cancel_requested = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task: asyncio.Task[FetchResult] | None = None
@@ -128,4 +130,17 @@ class AllCommentFetcher:
         return rows
 
     def _save(self, rows: list[dict[str, Any]], metadata: BroadcastHistoryMetadata) -> FetchResult:
-        return save_rows(self.lv, rows, self.log, history_mode="fetch", metadata=metadata)
+        return save_rows(
+            self.lv,
+            rows,
+            self.log,
+            history_mode="fetch",
+            metadata=metadata,
+            queue_embeddings=self._embedding_queue_enabled(),
+        )
+
+    def _embedding_queue_enabled(self) -> bool:
+        try:
+            return bool(self.embedding_queue_enabled())
+        except Exception:
+            return False

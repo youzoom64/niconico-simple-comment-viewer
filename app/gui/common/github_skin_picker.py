@@ -11,6 +11,7 @@ from PyQt6.QtGui import QColor, QImage, QPainter, QPixmap
 from PyQt6.QtWidgets import QDialog, QGridLayout, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
 from app.core.paths import APP_PATHS
+from app.gui.common.error_notice import show_error_notice
 
 
 KIRITORIKUN_SKIN_OWNER = "youzoom64"
@@ -511,7 +512,8 @@ class GitHubSkinPickerDialog(QDialog):
         self.tiles_by_url[""] = tile
         if not self.current_url:
             self.select_tile(tile)
-        self.status_label.setText(f"GitHubスキン取得失敗: {message}")
+        self.status_label.setText("GitHubスキン取得失敗")
+        show_error_notice(self, "GitHubスキン取得エラー", message)
 
     def _start_image_loading(self, skins: list[GitHubSkin]) -> None:
         worker = _SkinImageWorker(skins)

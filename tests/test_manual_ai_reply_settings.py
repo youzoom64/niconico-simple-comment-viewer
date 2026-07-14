@@ -30,6 +30,7 @@ class ManualAiReplySettingsTests(unittest.TestCase):
         self.assertIn("manual_ai_reply_include_broadcast_comments", columns)
         self.assertIn("manual_ai_reply_include_similar_comments", columns)
         self.assertIn("manual_ai_reply_codex_session_id", columns)
+        self.assertIn("manual_ai_reply_auto_comment_enabled", columns)
 
     def test_settings_can_be_saved_and_reloaded_per_account(self) -> None:
         conn = self.make_conn()
@@ -43,6 +44,7 @@ class ManualAiReplySettingsTests(unittest.TestCase):
                 "manual_ai_reply_include_broadcast_comments": False,
                 "manual_ai_reply_include_similar_comments": True,
                 "manual_ai_reply_codex_session_id": "019f5c0e-d341-70f3-8fdd-2cef9a31a556",
+                "manual_ai_reply_auto_comment_enabled": True,
             },
         )
 
@@ -54,6 +56,7 @@ class ManualAiReplySettingsTests(unittest.TestCase):
         self.assertFalse(settings["manual_ai_reply_include_broadcast_comments"])
         self.assertTrue(settings["manual_ai_reply_include_similar_comments"])
         self.assertEqual("019f5c0e-d341-70f3-8fdd-2cef9a31a556", settings["manual_ai_reply_codex_session_id"])
+        self.assertTrue(settings["manual_ai_reply_auto_comment_enabled"])
 
     def test_profile_upsert_does_not_clear_manual_ai_reply_settings(self) -> None:
         conn = self.make_conn()
@@ -67,6 +70,7 @@ class ManualAiReplySettingsTests(unittest.TestCase):
                 "manual_ai_reply_include_broadcast_comments": True,
                 "manual_ai_reply_include_similar_comments": False,
                 "manual_ai_reply_codex_session_id": "019f5c0e-d341-70f3-8fdd-2cef9a31a556",
+                "manual_ai_reply_auto_comment_enabled": True,
             },
         )
         upsert_live_user_profile(
@@ -94,6 +98,7 @@ class ManualAiReplySettingsTests(unittest.TestCase):
         self.assertEqual("条件B", settings["manual_ai_reply_output_conditions"])
         self.assertFalse(settings["manual_ai_reply_include_similar_comments"])
         self.assertEqual("019f5c0e-d341-70f3-8fdd-2cef9a31a556", settings["manual_ai_reply_codex_session_id"])
+        self.assertTrue(settings["manual_ai_reply_auto_comment_enabled"])
 
     def test_codex_session_id_can_be_updated_without_changing_other_settings(self) -> None:
         conn = self.make_conn()
@@ -125,6 +130,7 @@ class ManualAiReplySettingsTests(unittest.TestCase):
         settings = get_manual_ai_reply_settings(conn, "new-account")
 
         self.assertTrue(settings["manual_ai_reply_include_similar_comments"])
+        self.assertFalse(settings["manual_ai_reply_auto_comment_enabled"])
 
 
 if __name__ == "__main__":

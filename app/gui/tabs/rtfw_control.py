@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QTabWidget,
     QTextEdit,
@@ -33,18 +34,21 @@ from qt_dropdown.qt_dropdown import create_dropdown, current_dropdown_value, set
 from app.core.config import AppConfig
 from app.gui.tabs.caption_filters import CaptionFilterTab
 from app.gui.tabs.caption_style import CaptionStyleTab
+from app.gui.common.error_notice import show_error_notice
 from app.gui.tabs.rtfw_async import RtfwTaskWorker, SOURCE_LABELS, STATE_LABELS
 from app.services.caption_api import CaptionApiClient
 from app.services.rtfw_api import RtfwApiClient, RtfwDevice, RtfwStatus, normalize_local_http_url
+from app.services.rtfw_service import RtfwServiceManager
 from app.settings.store import JsonSettingsStore
 class RtfwControlTab(QWidget):
     config_saved = pyqtSignal(object)
 
-    def __init__(self, store: JsonSettingsStore, config: AppConfig, auto_connect: bool = True) -> None:
+    def __init__(self, store: JsonSettingsStore, config: AppConfig, auto_connect: bool = True, service_manager: RtfwServiceManager | None = None) -> None:
         super().__init__()
         self.store = store
         self.config = config
         self.client = RtfwApiClient(config.rtfw_base_url)
+        self.service_manager = service_manager or RtfwServiceManager()
         self.caption_client = CaptionApiClient(config.rtfw_overlay_url)
         self.caption_style_tab = CaptionStyleTab(self.caption_client, auto_load=auto_connect)
         self.caption_filter_tab = CaptionFilterTab(self.caption_client, auto_load=auto_connect)
@@ -56,6 +60,9 @@ class RtfwControlTab(QWidget):
         self.api_url_input = QLineEdit(config.rtfw_base_url)
         self.overlay_url_input = QLineEdit(config.rtfw_overlay_url)
         self.connection_label = QLabel("未接続")
+        self.connection_label.setWordWrap(False)
+        self.connection_label.setFixedWidth(110)
+        self.connection_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.status_label = QLabel("状態: 未取得")
         self.mic_devices = create_dropdown(items=[], min_width=360)
         self.pc_devices = create_dropdown(items=[], min_width=360)
@@ -63,6 +70,7 @@ class RtfwControlTab(QWidget):
         self.pc_button = QPushButton("PC音声開始")
         self.stop_button = QPushButton("停止")
         self.refresh_button = QPushButton("状態更新")
+        self.restart_service_button = QPushButton("RTFWサービスを再起動")
         self.save_button = QPushButton("接続先を保存")
         self.refresh_mic_button = QPushButton("マイク一覧")
         self.refresh_pc_button = QPushButton("PC音声一覧")
@@ -137,6 +145,7 @@ class RtfwControlTab(QWidget):
         connection.addWidget(self.api_url_input, 1)
         connection.addWidget(self.save_button)
         connection.addWidget(self.refresh_button)
+        connection.addWidget(self.restart_service_button)
         connection.addWidget(self.connection_label)
 
         mic_row = QHBoxLayout()
@@ -223,6 +232,7 @@ class RtfwControlTab(QWidget):
     def _connect_signals(self) -> None:
         self.save_button.clicked.connect(self.apply_connection_settings)
         self.refresh_button.clicked.connect(self.refresh_status)
+        self.restart_service_button.clicked.connect(self.restart_service)
         self.refresh_mic_button.clicked.connect(lambda: self.refresh_devices("mic"))
         self.refresh_pc_button.clicked.connect(lambda: self.refresh_devices("pc"))
         self.mic_button.clicked.connect(lambda: self.activate_source("mic"))
@@ -242,7 +252,8 @@ class RtfwControlTab(QWidget):
             client = RtfwApiClient(self.api_url_input.text())
             overlay_url = normalize_local_http_url(self.overlay_url_input.text(), label="OBS字幕URL")
         except Exception as exc:
-            self.connection_label.setText(str(exc))
+            self.connection_label.setText("設定エラー")
+            show_error_notice(self, "RTFW接続先設定エラー", exc)
             return
         data = self.config.to_dict()
         data["rtfw_base_url"] = client.base_url
@@ -271,6 +282,13 @@ class RtfwControlTab(QWidget):
     def refresh_status(self) -> None:
         if "status" not in self.busy_actions:
             self.run_task("status", self.client.status)
+
+    def restart_service(self) -> None:
+        self.set_control_enabled(False)
+        self.restart_service_button.setEnabled(False)
+        self.connection_label.setText("RTFWサービス再起動中")
+        self.websocket.abort()
+        self.run_task("service:restart", lambda: self.service_manager.restart(self.client.base_url))
 
     def refresh_devices(self, source: str) -> None:
         action = f"devices:{source}"
@@ -355,14 +373,30 @@ class RtfwControlTab(QWidget):
         if action.startswith("activate:") or action == "stop":
             self.set_control_enabled(True)
             self.refresh_status()
+            return
+        if action == "service:restart":
+            self.set_control_enabled(True)
+            self.restart_service_button.setEnabled(True)
+            self.connection_label.setText("RTFWサービス再起動済み")
+            self.current_status = None
+            self.ensure_websocket()
+            self.refresh_status()
+            self.refresh_devices("mic")
+            self.refresh_devices("pc")
+            self.refresh_configuration()
+            self.refresh_models()
 
     def handle_task_failed(self, action: str, message: str) -> None:
         self.busy_actions.discard(action)
         if action.startswith("activate:") or action == "stop":
             self.set_control_enabled(True)
+        if action == "service:restart":
+            self.set_control_enabled(True)
+            self.restart_service_button.setEnabled(True)
         if action == "configuration:update":
             self.save_config_button.setEnabled(True)
-        self.connection_label.setText(message)
+        self.connection_label.setText("操作失敗")
+        show_error_notice(self, "RTFW操作エラー", message)
 
     def cleanup_thread(self, thread: QThread, worker: RtfwTaskWorker) -> None:
         if thread in self.threads:
@@ -410,7 +444,7 @@ class RtfwControlTab(QWidget):
         self.partial_interval_seconds.setValue(float(settings.get("partial_interval_seconds", 3.0)))
         self.enable_partials.setChecked(bool(settings.get("enable_partials", True)))
         if payload.get("readOnly"):
-            self.connection_label.setText(str(payload.get("reason") or "サブPC再起動後に設定変更できます"))
+            self.connection_label.setText("設定変更不可")
 
     def apply_status(self, status: RtfwStatus) -> None:
         self.current_status = status
@@ -476,7 +510,8 @@ class RtfwControlTab(QWidget):
         try:
             url = normalize_local_http_url(self.overlay_url_input.text(), label="OBS字幕URL")
         except ValueError as exc:
-            self.connection_label.setText(str(exc))
+            self.connection_label.setText("URL設定エラー")
+            show_error_notice(self, "OBS字幕URLエラー", exc)
             return
         QDesktopServices.openUrl(QUrl(url))
 
@@ -484,10 +519,12 @@ class RtfwControlTab(QWidget):
         try:
             url = normalize_local_http_url(self.overlay_url_input.text(), label="OBS字幕URL")
         except ValueError as exc:
-            self.connection_label.setText(str(exc))
+            self.connection_label.setText("URL設定エラー")
+            show_error_notice(self, "OBS字幕URLエラー", exc)
             return
         QApplication.clipboard().setText(url)
         self.connection_label.setText("OBS字幕URLをコピー済み")
+
 
     def shutdown(self) -> None:
         self.poll_timer.stop()
